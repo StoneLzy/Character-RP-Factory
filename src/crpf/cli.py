@@ -18,6 +18,7 @@ from .rag_index import build_rag_index, query_rag_index
 from .quality import REVIEW_FIELDS, score_samples
 from .rag_review import build_rag_review_outputs
 from .rag_summary_builder import build_llm_rag_summaries, build_raw_rag_summaries
+from .saki_chat import CHAT_MODES, ChatTurn, chat_saki, format_saki_sources
 from .webui import WebUISettings, run_webui
 
 
@@ -369,6 +370,72 @@ def webui_command(
     )
     console.print(f"[green]Starting RAG WebUI on http://{host}:{port}[/green]")
     run_webui(settings=settings, host=host, port=port, open_browser=open_browser)
+
+
+@app.command("chat-saki")
+def chat_saki_command(
+    message: str | None = typer.Argument(None, help="Single-turn message. Omit to start interactive chat."),
+    config: Path = typer.Option(Path("config.example.yaml"), "--config", "-c"),
+    mode: str = typer.Option("auto", "--mode", help="auto, rag, or casual."),
+    top_k: int = typer.Option(4, "--top-k", "-k"),
+    embedding_model: str | None = typer.Option(None, "--embedding-model"),
+    chat_model: str | None = typer.Option(None, "--chat-model", "-m"),
+    collection_name: str | None = typer.Option(None, "--collection-name"),
+    backend: str = typer.Option("auto", "--backend", help="auto, chroma, or simple."),
+    show_sources: bool = typer.Option(False, "--show-sources", help="Show RAG sources when retrieval is used."),
+) -> None:
+    """Chat as Saki with optional RAG grounding."""
+    if mode not in CHAT_MODES:
+        raise typer.BadParameter("mode must be auto, rag, or casual")
+    cfg = load_config(config)
+    common = {
+        "chroma_dir": cfg.chroma_dir,
+        "collection_name": collection_name or cfg.rag.collection_name,
+        "embedding_model": embedding_model or cfg.rag.embedding_model,
+        "chat_model": chat_model or cfg.rag.chat_model,
+        "ollama_base_url": cfg.rag.ollama_base_url,
+        "mode": mode,
+        "top_k": top_k,
+        "backend": backend,
+        "rag_docs_dir": cfg.rag_docs_dir,
+    }
+
+    if message is not None:
+        try:
+            response = chat_saki(user_message=message, history=[], **common)
+        except Exception as exc:
+            console.print(f"chat-saki failed: {exc}", style="red", markup=False)
+            raise typer.Exit(1) from exc
+        console.print(response.message, markup=False)
+        if show_sources:
+            console.print("\n[bold cyan]RAG[/bold cyan] " + ("used" if response.rag_used else "skipped"))
+            console.print(format_saki_sources(response.sources), markup=False)
+        return
+
+    history: list[ChatTurn] = []
+    console.print("[green]chat-saki started. Type /exit to quit, /rag /casual /auto to switch mode.[/green]")
+    current_mode = mode
+    while True:
+        user_input = console.input("[bold]制作人> [/bold]").strip()
+        if not user_input:
+            continue
+        if user_input in {"/exit", "/quit"}:
+            break
+        if user_input in {"/rag", "/casual", "/auto"}:
+            current_mode = user_input[1:]
+            common["mode"] = current_mode
+            console.print(f"[cyan]mode={current_mode}[/cyan]")
+            continue
+        try:
+            response = chat_saki(user_message=user_input, history=history, **common)
+        except Exception as exc:
+            console.print(f"chat-saki failed: {exc}", style="red", markup=False)
+            continue
+        console.print(f"[bold magenta]咲季>[/bold magenta] {response.message}", markup=False)
+        if show_sources and response.rag_used:
+            console.print(format_saki_sources(response.sources), markup=False)
+        history.append(ChatTurn(user=user_input, assistant=response.message))
+        history = history[-6:]
 
 
 if __name__ == "__main__":

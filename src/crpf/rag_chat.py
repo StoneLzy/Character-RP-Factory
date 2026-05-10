@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .rag_index import RagSearchResult, query_rag_index
 
@@ -159,6 +159,58 @@ def call_ollama_chat(
     if not content:
         raise RuntimeError(f"Ollama chat response is empty: {raw}")
     return content
+
+
+def stream_ollama_chat(
+    model: str,
+    ollama_base_url: str,
+    prompt: str,
+    temperature: float = 0.2,
+    num_ctx: int = 8192,
+    num_predict: int = 900,
+    timeout: int = 300,
+) -> Iterator[str]:
+    url = ollama_base_url.rstrip("/") + "/api/chat"
+    payload = {
+        "model": model,
+        "stream": True,
+        "think": False,
+        "options": {
+            "temperature": temperature,
+            "top_p": 0.9,
+            "num_ctx": num_ctx,
+            "num_predict": num_predict,
+        },
+        "messages": [
+            {
+                "role": "system",
+                "content": "你是严谨的中文 RAG 问答助手。只根据给定资料回答，不输出思考过程。",
+            },
+            {"role": "user", "content": prompt},
+        ],
+    }
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            for line in response:
+                if not line.strip():
+                    continue
+                raw = json.loads(line.decode("utf-8"))
+                if raw.get("error"):
+                    raise RuntimeError(str(raw["error"]))
+                content = str(raw.get("message", {}).get("content", ""))
+                if content:
+                    yield content
+                if raw.get("done"):
+                    break
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Ollama chat stream request failed: {exc}") from exc
 
 
 def build_sources(contexts: list[RagSearchResult]) -> list[RagSource]:

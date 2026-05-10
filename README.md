@@ -157,17 +157,37 @@ PYTHONPATH=src python3 -m crpf.cli rag-ask --config config.yaml --show-context "
 
 ### 本地 WebUI
 
-可以启动一个本地页面来使用 `rag-query` 和 `rag-ask`：
+可以启动一个本地页面来使用 `rag-query`、`rag-ask` 和 `chat-saki`：
 
 ```bash
 PYTHONPATH=src python3 -m crpf.cli webui --config config.yaml --port 8765
 ```
 
-然后打开 `http://127.0.0.1:8765`。页面支持输入问题、调整 `Top K`、切换后端，并查看回答、来源和召回上下文。也可以加 `--open` 自动打开浏览器：
+然后打开 `http://127.0.0.1:8765`。页面支持输入问题、调整 `Top K`、切换后端，使用“问答”“检索”或“咲季聊天”，并查看回答、来源和召回上下文。左侧边栏会显示历史聊天，聊天记录会保存在本地 SQLite 数据库 `data/chat_history.sqlite3`；咲季聊天可选择 `auto/rag/casual`。也可以加 `--open` 自动打开浏览器：
 
 ```bash
 PYTHONPATH=src python3 -m crpf.cli webui --config config.yaml --port 8765 --open
 ```
+
+### 咲季角色聊天
+
+`chat-saki` 会以花海咲季身份回复。默认 `--mode auto` 会自动判断是否需要检索：剧情、设定、关系、口吻问题会查 RAG；日常聊天、鼓励、计划建议会直接按角色人格回答。
+
+单轮测试：
+
+```bash
+PYTHONPATH=src python3 -m crpf.cli chat-saki --config config.yaml "今天有点累，鼓励我一下"
+PYTHONPATH=src python3 -m crpf.cli chat-saki --config config.yaml --show-sources "讲讲名古屋公演"
+PYTHONPATH=src python3 -m crpf.cli chat-saki --config config.yaml --mode rag --show-sources "你和佑芽是什么关系？"
+```
+
+交互聊天：
+
+```bash
+PYTHONPATH=src python3 -m crpf.cli chat-saki --config config.yaml
+```
+
+交互中可以输入 `/auto`、`/rag`、`/casual` 切换模式，输入 `/exit` 退出。
 
 ## hski 数据说明
 
