@@ -1,0 +1,69 @@
+[9/500] summarized scene-00009 CSV/cidol/fktn/adv_cidol-fktn-3-016_03.csv
+[31/500] summarized scene-00031 CSV/cidol/hski/adv_cidol-hski-3-012_02.csv
+[35/500] summarized scene-00035 CSV/cidol/hski/adv_cidol-hski-3-015_03.csv
+[38/500] summarized scene-00038 CSV/cidol/hski/adv_cidol-hski-3-017_03.csv
+[49/500] summarized scene-00049 CSV/cidol/jsna/adv_cidol-jsna-3-011_02.csv
+[118/500] summarized scene-00118 CSV/csprt/csprt-3-0029/adv_csprt-3-0029_01.csv
+[169/500] summarized scene-00169 CSV/dear/hmsz/adv_dear_hmsz_007.csv
+[170/500] summarized scene-00170 CSV/dear/hmsz/adv_dear_hmsz_014.csv
+[194/500] summarized scene-00194 CSV/dear/hski/adv_dear_hski_022.csv
+[212/500] summarized scene-00212 CSV/dear/hume/adv_dear_hume_012.csv
+[214/500] summarized scene-00214 CSV/dear/hume/adv_dear_hume_014.csv
+[228/500] summarized scene-00228 CSV/dear/jsna/adv_dear_jsna_016.csv
+[238/500] summarized scene-00238 CSV/dear/shro/adv_dear_shro_023.csv
+[240/500] summarized scene-00240 CSV/dear/ttmr/adv_dear_ttmr_013.csv
+[258/500] summarized scene-00258 CSV/event/008/adv_event_008_main-04.csv
+[268/500] summarized scene-00268 CSV/event/012/adv_event_012_main-04.csv
+[284/500] summarized scene-00284 CSV/event/019/adv_event_019_main-04.csv
+[339/500] summarized scene-00339 CSV/pevent/hski/adv_pevent_001_hski_school_008.csv
+[448/500] summarized scene-00448 CSV/unit/01-01/adv_unit_01-01_04.csv
+[470/500] summarized scene-00470 CSV/unit/01-02/adv_unit_01-02_13.csv
+[471/500] summarized scene-00471 CSV/unit/01-02/adv_unit_01-02_14.csv
+[472/500] summarized scene-00472 CSV/unit/01-02/adv_unit_01-02_15.csv
+[485/500] summarized scene-00485 CSV/unit/01-04/adv_unit_01-04_05.csv
+[494/500] summarized scene-00494 CSV/unit/01-04/adv_unit_01-04_16.csv
+scene_chunks: outputs/scene_chunks.jsonl
+scene_summaries: outputs/scene_summaries.jsonl
+rag_scene_cards_dir: data/rag_docs/scenes
+topic_plot: outputs/topic_summaries/plot_summary.md
+rag_plot: data/rag_docs/plot_summary.md
+topic_worldbuilding: outputs/topic_summaries/worldbuilding_summary.md
+rag_worldbuilding: data/rag_docs/worldbuilding.md
+topic_relationships: outputs/topic_summaries/relationships_summary.md
+rag_relationships: data/rag_docs/relationships.md
+topic_character_arc: outputs/topic_summaries/character_arc_summary.md
+rag_character_arc: data/rag_docs/character_profile.md
+topic_team_story: outputs/topic_summaries/team_story_summary.md
+rag_team_story: data/rag_docs/team_story.md
+topic_dialogue_style: outputs/topic_summaries/dialogue_style_summary.md
+rag_dialogue_style: data/rag_docs/dialogue_patterns.md
+real 960.06
+user 1.01
+sys 0.15
+[38/500] summarized scene-00038 CSV/cidol/hski/adv_cidol-hski-3-017_03.csv
+[49/500] summarized scene-00049 CSV/cidol/jsna/adv_cidol-jsna-3-011_02.csv
+[212/500] summarized scene-00212 CSV/dear/hume/adv_dear_hume_012.csv
+[238/500] summarized scene-00238 CSV/dear/shro/adv_dear_shro_023.csv
+[284/500] summarized scene-00284 CSV/event/019/adv_event_019_main-04.csv
+[339/500] summarized scene-00339 CSV/pevent/hski/adv_pevent_001_hski_school_008.csv
+[471/500] summarized scene-00471 CSV/unit/01-02/adv_unit_01-02_14.csv
+[485/500] summarized scene-00485 CSV/unit/01-04/adv_unit_01-04_05.csv
+[494/500] summarized scene-00494 CSV/unit/01-04/adv_unit_01-04_16.csv
+scene_chunks: outputs/scene_chunks.jsonl
+scene_summaries: outputs/scene_summaries.jsonl
+rag_scene_cards_dir: data/rag_docs/scenes
+topic_plot: outputs/topic_summaries/plot_summary.md
+rag_plot: data/rag_docs/plot_summary.md
+topic_worldbuilding: outputs/topic_summaries/worldbuilding_summary.md
+rag_worldbuilding: data/rag_docs/worldbuilding.md
+topic_relationships: outputs/topic_summaries/relationships_summary.md
+rag_relationships: data/rag_docs/relationships.md
+topic_character_arc: outputs/topic_summaries/character_arc_summary.md
+rag_character_arc: data/rag_docs/character_profile.md
+topic_team_story: outputs/topic_summaries/team_story_summary.md
+rag_team_story: data/rag_docs/team_story.md
+topic_dialogue_style: outputs/topic_summaries/dialogue_style_summary.md
+rag_dialogue_style: data/rag_docs/dialogue_patterns.md
+real 1053.48
+user 0.89
+sys 0.16

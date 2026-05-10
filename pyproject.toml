@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "character-rp-factory"
+version = "0.1.0"
+description = "Clean game dialogue CSV files into character RP assets, RAG docs, and LoRA training data."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "typer>=0.12",
+  "rich>=13.7",
+  "pyyaml>=6.0",
+  "pandas>=2.2",
+  "pydantic>=2.7",
+  "requests>=2.31",
+]
+
+[project.optional-dependencies]
+rag = ["chromadb>=0.5"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+crpf = "crpf.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

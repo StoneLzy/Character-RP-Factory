@@ -1,0 +1,196 @@
+Metadata-Version: 2.4
+Name: character-rp-factory
+Version: 0.1.0
+Summary: Clean game dialogue CSV files into character RP assets, RAG docs, and LoRA training data.
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: typer>=0.12
+Requires-Dist: rich>=13.7
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: pandas>=2.2
+Requires-Dist: pydantic>=2.7
+Requires-Dist: requests>=2.31
+Provides-Extra: rag
+Requires-Dist: chromadb>=0.5; extra == "rag"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+
+# Character-RP-Factory
+
+把游戏角色对话 CSV 清洗成三类资产：
+
+- 可审阅角色台词样本：`outputs/hski/*.csv`
+- LoRA / QLoRA 微调数据：后续导出 `training_samples.jsonl`
+- 本地 RAG 文档：`data/rag_docs/*.md`
+
+当前 MVP 目标角色是《学园偶像大师》的 `hski`，即花海咲季 / 咲季。原始素材保留在根目录的 `CSV/`，本项目代码默认从那里读取，不复制或改写原始文件。
+
+## 当前结构
+
+```text
+.
+├── CSV/                         # 原始游戏剧情 CSV，保持只读使用
+├── Character_RP_Factory_Project_Plan.docx
+├── config.example.yaml          # hski 配置模板
+├── config.yaml                  # 当前实际使用配置
+├── data/
+│   ├── characters/hski/          # 角色设定种子和人工资料
+│   ├── raw_csv/                  # 占位说明；当前 raw 来源是 ../CSV
+│   ├── processed/                # 清洗后的中间数据
+│   ├── rag_docs/                 # 后续生成/人工编辑 RAG Markdown
+│   └── chroma_db/                # 后续本地向量库
+├── examples/
+├── outputs/hski/                 # hski 的导出结果
+├── scripts/
+├── src/crpf/                     # Python CLI 包
+└── tests/
+```
+
+## 快速开始
+
+```bash
+PYTHONPATH=src python3 -m crpf.cli --help
+PYTHONPATH=src python3 -m crpf.cli merge --config config.yaml
+PYTHONPATH=src python3 -m crpf.cli clean --config config.yaml
+PYTHONPATH=src python3 -m crpf.cli build-context --config config.yaml
+PYTHONPATH=src python3 -m crpf.cli score --config config.yaml
+PYTHONPATH=src python3 -m crpf.cli export-jsonl --config config.yaml --language both
+PYTHONPATH=src python3 -m crpf.cli build-rag-docs --config config.yaml
+PYTHONPATH=src python3 -m crpf.cli summarize-raw-rag --config config.yaml
+PYTHONPATH=src python3 -m crpf.cli summarize-scenes-llm --config config.yaml --model qwen3.5:9b --summary-mode fast
+PYTHONPATH=src python3 -m crpf.cli prepare-consolidation-inputs --config config.yaml
+```
+
+`merge` 会递归读取 `CSV/**/*.csv`，输出 `outputs/hski/merged.csv`。`clean` 会标准化字段、清理系统行和空台词，并输出：
+
+- `outputs/hski/cleaned.csv`
+- `outputs/hski/character_lines.csv`
+- `outputs/hski/samples_with_context.csv`
+- `outputs/hski/good_samples.csv`
+- `outputs/hski/review_samples.csv`
+- `outputs/hski/training_samples_ja.jsonl`
+- `outputs/hski/training_samples_zh.jsonl`
+- `data/rag_docs/character_profile.md`
+- `data/rag_docs/plot_summary.md`
+- `data/rag_docs/relationships.md`
+- `data/rag_docs/worldbuilding.md`
+- `data/rag_docs/dialogue_patterns.md`
+
+注意：`character_lines.csv` 只是目标角色回复索引。`build-context` 会回到完整的 `cleaned.csv`，在同一个 `source_file` 内按原始行号取前 N 句，所以不会用“只剩咲季台词”的文件硬拼上下文。
+
+`score` 会给样本增加 `quality_score` 和 `quality_reason`，并生成带人工审核字段的 `review_samples.csv`：`keep`、`notes`、`emotion`、`intent`、`tone`、`relationship`。`export-jsonl` 默认导出 ChatML `messages` 格式，也可以用 `--format instruction` 导出 instruction/input/output 格式。
+
+JSONL 会区分语言版本：
+
+- `--language ja`: 使用日文 `context` / `response`，输出 `training_samples_ja.jsonl`
+- `--language zh`: 使用中文 `context_translation` / `response_translation`，输出 `training_samples_zh.jsonl`
+- `--language both`: 同时输出两份
+
+## RAG 文档人工编辑
+
+运行 `build-rag-docs` 会在 `data/rag_docs/` 下生成五个 Markdown 模板。每个模板包含说明、TODO、基础统计、人工总结区和少量候选台词样例。
+
+如果需要从原始 CSV 的完整场景生成中文 RAG 摘要，运行 `summarize-raw-rag`。它会直接读取 `CSV/`，轻清洗全量对话，筛出所有与花海咲季相关的完整场景/对话块，并生成：
+
+- `outputs/scene_chunks.jsonl`
+- `outputs/scene_summaries.jsonl`
+- `outputs/topic_summaries/plot_summary.md`
+- `outputs/topic_summaries/worldbuilding_summary.md`
+- `outputs/topic_summaries/relationships_summary.md`
+- `outputs/topic_summaries/character_arc_summary.md`
+- `outputs/topic_summaries/team_story_summary.md`
+- `outputs/topic_summaries/dialogue_style_summary.md`
+- `data/rag_docs/plot_summary.md`
+- `data/rag_docs/worldbuilding.md`
+- `data/rag_docs/relationships.md`
+- `data/rag_docs/character_profile.md`
+- `data/rag_docs/team_story.md`
+- `data/rag_docs/dialogue_patterns.md`
+
+`summarize-raw-rag` 是规则式场景卡。要让本地 LLM 真正阅读每个 CSV 场景并生成结构化摘要，先确保 Ollama 已启动并拉取模型，然后运行：
+
+```bash
+ollama pull qwen3.5:9b
+PYTHONPATH=src python3 -m crpf.cli summarize-scenes-llm --config config.yaml --model qwen3.5:9b --summary-mode fast
+```
+
+`fast` 模式会关闭 thinking、缩短 prompt、限制生成长度，适合批量跑 500 个场景。需要更完整的人工审核卡时可以改用 `--summary-mode full --model qwen3:14b`，但速度会明显变慢。这个命令支持断点续跑；测试少量场景可加 `--limit 5`。
+
+编辑原则：
+
+- 把候选台词当证据，不要把 CSV 原文整段复制进 RAG。
+- 优先写人工总结后的稳定事实、关系、口吻规则和世界观设定。
+- 对不确定内容加 `待核对`，不要让 RAG 把猜测当事实。
+- 角色风格放进 `character_profile.md` 和 `dialogue_patterns.md`。
+- 剧情事实放进 `plot_summary.md`，人物关系放进 `relationships.md`，学园/偶像活动设定放进 `worldbuilding.md`。
+
+如果要把 500 条场景摘要交给网页版 GPT 做二次大总结，可以先运行：
+
+```bash
+PYTHONPATH=src python3 -m crpf.cli prepare-consolidation-inputs --config config.yaml
+```
+
+它会生成 `outputs/consolidation_inputs/`，里面包含按目标 RAG 文档整理好的输入材料和提示词。
+
+## 本地 RAG 入库与检索
+
+RAG 入库会把 `data/rag_docs/*.md` 的高层总结和 `data/rag_docs/scenes/*.md` 的 500 张场景卡切块、向量化，并写入本地向量索引。默认配置使用 Ollama 的 `bge-m3` embedding 模型。
+
+网络正常时推荐安装 ChromaDB：
+
+```bash
+ollama pull bge-m3
+python3 -m pip install -e ".[rag]"
+PYTHONPATH=src python3 -m crpf.cli build-rag-index --config config.yaml --reset
+```
+
+如果暂时没有网络、装不了 ChromaDB，也可以直接使用内置的简单 JSONL 向量索引：
+
+```bash
+PYTHONPATH=src python3 -m crpf.cli build-rag-index --config config.yaml --backend simple --reset
+```
+
+入库完成后可以先做检索验收：
+
+```bash
+PYTHONPATH=src python3 -m crpf.cli rag-query --config config.yaml "咲季和佑芽是什么关系？"
+PYTHONPATH=src python3 -m crpf.cli rag-query --config config.yaml "咲季为什么害怕输给妹妹？"
+PYTHONPATH=src python3 -m crpf.cli rag-query --config config.yaml "咲季的说话风格有什么特点？"
+```
+
+`--backend auto` 会优先用 ChromaDB；如果没安装 ChromaDB，就使用内置简单索引。`rag-query` 会显示召回 chunk 的来源文件、主题、`scene_id` 和摘要片段。召回质量确认后，再接聊天模型做真正的 RAG 问答/角色扮演。
+
+## hski 数据说明
+
+当前 `CSV/` 中与 `hski` 直接相关的文件约 200 个，覆盖：
+
+- `pstory/hski`: 主线培育剧情
+- `cidol/hski`: 卡牌/角色剧情
+- `dear/hski`: 亲爱度/交流剧情
+- `pevent/hski`: 培育事件
+- `pgrowth/hski`: 成长剧情
+- `live/hski`: 演出开始/结束短台词
+- `other/*hski*`: 教程、生日、抽卡等零散台词
+
+CSV 字段目前主要是：
+
+```text
+id,name,text,trans
+```
+
+其中 `name` 是说话人，`text` 是日文原文，`trans` 是中文译文。默认清洗时保留 `text` 和 `trans`，筛选目标角色时主要匹配 `name` 中的 `咲季`、`花海咲季` 等别名。
+
+## 下一步里程碑
+
+1. 上下文构造：为每条咲季回复拼接前 N 句上下文。
+2. 样本评分与人工审核：生成 `review_samples.csv` 和 `good_samples.csv`。
+3. JSONL 导出：支持 ChatML 和 instruction 格式。
+4. RAG 文档模板：生成角色风格、剧情摘要、关系、世界观、对话模式。
+5. 本地 RAG：ChromaDB + Ollama。
+6. MLX LoRA 训练准备：验证 JSONL，提供训练命令模板。
+
+## 验证
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests
+```

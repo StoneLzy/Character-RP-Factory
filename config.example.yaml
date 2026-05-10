@@ -1,0 +1,94 @@
+project:
+  name: character-rp-factory
+  character_id: hski
+
+paths:
+  raw_csv_dir: CSV
+  output_dir: outputs/hski
+  processed_dir: data/processed
+  rag_docs_dir: data/rag_docs
+  chroma_dir: data/chroma_db
+
+character:
+  canonical_name: 花海咲季
+  character_code: hski
+  target_names:
+    - 咲季
+    - 花海咲季
+    - hski
+    - Hanami Saki
+    - Saki
+  user_names:
+    - "{user}"
+    - プロデューサー
+    - 制作人
+  user_preferred_address: 制作人
+  relationship_mode: 亲密、信赖、轻微调侃，但不过度恋爱
+
+columns:
+  aliases:
+    line_id:
+      - id
+      - dialogue_id
+      - line_id
+    speaker:
+      - name
+      - speaker
+      - character
+      - 说话人
+    text:
+      - text
+      - dialogue
+      - line
+      - 台词
+    translation:
+      - trans
+      - translation
+      - zh
+      - 中文
+    chapter:
+      - chapter
+      - 章节
+    scene:
+      - scene
+      - 场景
+    order:
+      - order
+      - index
+      - 顺序
+
+context:
+  previous_lines: 3
+  prefer_translation_for_review: true
+
+cleaning:
+  min_response_chars: 2
+  max_response_chars: 500
+  normalize_newlines: true
+  excluded_speakers:
+    - info
+    - 译者
+    - select
+  bad_patterns:
+    - 点击继续
+    - 任务完成
+    - 获得道具
+    - ^$
+
+quality:
+  min_quality_score: 70
+
+rag:
+  collection_name: hski_character_rag
+  embedding_model: bge-m3
+  chat_model: qwen3.5:9b
+  ollama_base_url: http://localhost:11434
+  chunk_size: 500
+  chunk_overlap: 80
+  top_k: 5
+
+training:
+  format: chatml
+  base_model: Qwen3-4B-Instruct
+  max_context_chars: 1200
+  copyright_note: 避免以复现原作长台词为目标，优先学习语气、称呼和互动节奏。
