@@ -27,21 +27,6 @@ Character RP Factory 不是单纯的台词抽取脚本。它把原始剧情 CSV 
 - 提供现代聊天应用风格 WebUI：历史聊天、流式回复、来源折叠、检索片段、原文追溯。
 - 可选接入本地语音合成服务：页面显示中文回复，播放时可先翻译成目标语种再合成。
 
-## 推荐标题
-
-如果是 GitHub 仓库标题，我最推荐：
-
-**Character RP Factory: Game Dialogue to RAG, LoRA & Voice Chat**
-
-其他候选：
-
-- **Character RP Factory**
-- **Game Dialogue RP Factory**
-- **CSV-to-Character-RAG**
-- **Character RP Lab**
-- **Dialogue-to-RP Toolkit**
-
-我的取舍：`Character RP Factory` 适合作为仓库名，短、可扩展；副标题用 `Game Dialogue to RAG, LoRA & Voice Chat` 说明完整能力。
 
 ## 目录结构
 
