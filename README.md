@@ -163,10 +163,17 @@ PYTHONPATH=src python3 -m crpf.cli rag-ask --config config.yaml --show-context "
 PYTHONPATH=src python3 -m crpf.cli webui --config config.yaml --port 8765
 ```
 
-然后打开 `http://127.0.0.1:8765`。页面支持输入问题、调整 `Top K`、切换后端，使用“问答”“检索”或“咲季聊天”，并查看回答、来源和召回上下文。左侧边栏会显示历史聊天，聊天记录会保存在本地 SQLite 数据库 `data/chat_history.sqlite3`；咲季聊天可选择 `auto/rag/casual`。也可以加 `--open` 自动打开浏览器：
+然后打开 `http://127.0.0.1:8765`。页面支持输入问题、调整 `Top K`、切换后端，使用“问答”“检索”或“咲季聊天”，并查看回答、来源和召回上下文。左侧边栏会显示历史聊天，聊天记录会保存在本地 SQLite 数据库 `data/chat_history.sqlite3`；咲季聊天可选择 `auto/rag/casual`。如果本机 GPT-SoVITS API 已启动，咲季回复旁的“播放语音”会调用 `config.yaml` 的 `tts` 配置生成音频，缓存到 `GPT-SoVITS/outputs/`，重复播放会直接复用缓存。默认语音模式会先把中文回复翻译成咲季口吻的日语，再用 `text_lang: ja` 合成；同目录下的 `.json` 会记录原中文和实际送入 GPT-SoVITS 的日语文本。也可以加 `--open` 自动打开浏览器：
 
 ```bash
 PYTHONPATH=src python3 -m crpf.cli webui --config config.yaml --port 8765 --open
+```
+
+GPT-SoVITS API 示例启动命令：
+
+```bash
+cd "/Users/stonelzy/Personal/GPT-SoVITS 2"
+./runtime/bin/python3 api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml
 ```
 
 ### 咲季角色聊天

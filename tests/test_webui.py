@@ -21,7 +21,11 @@ class WebUITests(unittest.TestCase):
         self.assertIn("/api/query", html)
         self.assertIn("/api/chat-saki", html)
         self.assertIn("/api/chat-saki-stream", html)
+        self.assertIn("/api/tts/saki", html)
+        self.assertIn("data-play-tts", html)
+        self.assertIn("播放语音", html)
         self.assertIn("/api/conversations", html)
+        self.assertIn("/api/trace", html)
         self.assertIn("/assets/saki-avatar.jpg", html)
         self.assertIn("CRPF Saki", html)
         self.assertIn("历史聊天", html)
@@ -37,6 +41,8 @@ class WebUITests(unittest.TestCase):
         self.assertIn('id="contextsDetails"', html)
         self.assertIn("has-new", html)
         self.assertIn("markDetailNotice", html)
+        self.assertIn("原文追溯", html)
+        self.assertIn("data-trace-scene-id", html)
         self.assertNotIn("<details open>", html)
 
     def test_parse_top_k_and_backend_validate_ranges(self):

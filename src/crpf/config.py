@@ -36,6 +36,28 @@ class RagConfig:
 
 
 @dataclass(frozen=True)
+class TTSConfig:
+    enabled: bool = True
+    provider: str = "gpt_sovits"
+    base_url: str = "http://127.0.0.1:9880"
+    output_dir: Path = Path("GPT-SoVITS/outputs")
+    ref_audio_path: Path = Path("GPT-SoVITS/5-wav32k/sud_vo_adv_dear_hski_001_hski-033.wav")
+    prompt_text: str = "世界一のアイドルになるって決めたんだもの。"
+    prompt_lang: str = "ja"
+    text_lang: str = "ja"
+    translate_to_japanese: bool = True
+    translation_model: str = ""
+    translation_base_url: str = ""
+    translation_timeout_seconds: int = 180
+    text_split_method: str = "cut5"
+    media_type: str = "wav"
+    batch_size: int = 1
+    speed_factor: float = 1.0
+    timeout_seconds: int = 180
+    max_text_chars: int = 600
+
+
+@dataclass(frozen=True)
 class ProjectConfig:
     raw_csv_dir: Path = Path("CSV")
     output_dir: Path = Path("outputs/hski")
@@ -47,6 +69,7 @@ class ProjectConfig:
     user_names: tuple[str, ...] = ("{user}", "プロデューサー", "制作人")
     column_aliases: dict[str, list[str]] = field(default_factory=lambda: dict(DEFAULT_COLUMN_ALIASES))
     rag: RagConfig = field(default_factory=RagConfig)
+    tts: TTSConfig = field(default_factory=TTSConfig)
     previous_lines: int = 3
     min_response_chars: int = 2
     max_response_chars: int = 500
@@ -107,6 +130,14 @@ def _as_tuple(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(str(item) for item in value)
 
 
+def _as_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def load_config(path: str | Path | None = None) -> ProjectConfig:
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
     data: dict[str, Any] = {}
@@ -127,6 +158,7 @@ def load_config(path: str | Path | None = None) -> ProjectConfig:
     cleaning = data.get("cleaning", {})
     quality = data.get("quality", {})
     rag = data.get("rag", {})
+    tts = data.get("tts", {})
     training = data.get("training", {})
 
     aliases = DEFAULT_COLUMN_ALIASES | (columns.get("aliases") or {})
@@ -149,6 +181,29 @@ def load_config(path: str | Path | None = None) -> ProjectConfig:
             chunk_size=int(rag.get("chunk_size", 500)),
             chunk_overlap=int(rag.get("chunk_overlap", 80)),
             top_k=int(rag.get("top_k", 5)),
+        ),
+        tts=TTSConfig(
+            enabled=_as_bool(tts.get("enabled"), True),
+            provider=str(tts.get("provider", "gpt_sovits")),
+            base_url=str(tts.get("base_url", "http://127.0.0.1:9880")),
+            output_dir=_as_path(tts.get("output_dir"), "GPT-SoVITS/outputs"),
+            ref_audio_path=_as_path(
+                tts.get("ref_audio_path"),
+                "GPT-SoVITS/5-wav32k/sud_vo_adv_dear_hski_001_hski-033.wav",
+            ),
+            prompt_text=str(tts.get("prompt_text", "世界一のアイドルになるって決めたんだもの。")),
+            prompt_lang=str(tts.get("prompt_lang", "ja")),
+            text_lang=str(tts.get("text_lang", "ja")),
+            translate_to_japanese=_as_bool(tts.get("translate_to_japanese"), True),
+            translation_model=str(tts.get("translation_model", "")),
+            translation_base_url=str(tts.get("translation_base_url", "")),
+            translation_timeout_seconds=int(tts.get("translation_timeout_seconds", 180)),
+            text_split_method=str(tts.get("text_split_method", "cut5")),
+            media_type=str(tts.get("media_type", "wav")),
+            batch_size=int(tts.get("batch_size", 1)),
+            speed_factor=float(tts.get("speed_factor", 1.0)),
+            timeout_seconds=int(tts.get("timeout_seconds", 180)),
+            max_text_chars=int(tts.get("max_text_chars", 600)),
         ),
         previous_lines=int(context.get("previous_lines", 3)),
         min_response_chars=int(cleaning.get("min_response_chars", 2)),

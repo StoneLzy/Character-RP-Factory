@@ -8,13 +8,15 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .chat_store import ChatHistoryStore, Conversation, StoredMessage
 from .config import ProjectConfig
 from .rag_chat import ask_rag, stream_ollama_chat
 from .rag_index import RagSearchResult, query_rag_index
 from .saki_chat import CHAT_MODES, ChatTurn, chat_saki, clean_saki_reply, prepare_saki_chat
+from .source_trace import build_source_trace, normalize_scene_id
+from .tts import synthesize_saki_tts
 
 
 ASSETS_DIR = Path(__file__).with_name("assets")
@@ -58,12 +60,18 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
         server_version = "CRPFWebUI/0.1"
 
         def do_GET(self) -> None:  # noqa: N802 - http.server naming
-            path = urlparse(self.path).path
+            parsed_url = urlparse(self.path)
+            path = parsed_url.path
             if path == "/":
                 self.write_html(render_index_html(settings))
                 return
             if path == "/assets/saki-avatar.jpg":
                 self.write_file(SAKI_AVATAR_PATH, "image/jpeg")
+                return
+            if path.startswith("/tts-audio/"):
+                filename = Path(unquote(path.removeprefix("/tts-audio/"))).name
+                audio_path = settings.config.tts.output_dir / filename
+                self.write_file(audio_path, audio_content_type(audio_path))
                 return
             if path == "/health":
                 self.write_json(
@@ -75,6 +83,22 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
                         "backend": settings.backend,
                     }
                 )
+                return
+            if path == "/api/trace":
+                try:
+                    query = parse_qs(parsed_url.query)
+                    scene_id = normalize_scene_id(
+                        first_query_value(query, "scene_id") or first_query_value(query, "source_path") or ""
+                    )
+                    self.write_json(
+                        build_source_trace(
+                            scene_id=scene_id,
+                            rag_docs_dir=settings.config.rag_docs_dir,
+                            output_dir=settings.config.summary_output_dir,
+                        )
+                    )
+                except ValueError as exc:
+                    self.write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
                 return
             if path == "/api/conversations":
                 self.write_json(
@@ -124,6 +148,9 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
                     return
                 if path == "/api/chat-saki-stream":
                     self.handle_chat_saki_stream(payload)
+                    return
+                if path == "/api/tts/saki":
+                    self.handle_tts_saki(payload)
                     return
                 self.write_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
             except ValueError as exc:
@@ -378,6 +405,22 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
             except Exception as exc:
                 self.write_ndjson({"type": "error", "error": str(exc)})
 
+        def handle_tts_saki(self, payload: dict[str, Any]) -> None:
+            text = str(payload.get("text", "")).strip()
+            if not text:
+                raise ValueError("text is required")
+            result = synthesize_saki_tts(settings.config, text)
+            self.write_json(
+                {
+                    "audio_url": f"/tts-audio/{result.path.name}",
+                    "cache_path": str(result.path),
+                    "cached": result.cached,
+                    "voice_text": result.voice_text,
+                    "translated": result.translated,
+                    "metadata_path": str(result.metadata_path),
+                }
+            )
+
         def read_json(self) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length).decode("utf-8") if length else "{}"
@@ -455,6 +498,17 @@ def parse_backend(value: Any, default: str) -> str:
     return backend
 
 
+def audio_content_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".wav":
+        return "audio/wav"
+    if suffix == ".mp3":
+        return "audio/mpeg"
+    if suffix in {".ogg", ".oga"}:
+        return "audio/ogg"
+    return "application/octet-stream"
+
+
 def parse_chat_mode(value: Any, default: str) -> str:
     mode = str(value or default).strip()
     if mode not in CHAT_MODES:
@@ -483,6 +537,11 @@ def parse_optional_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def first_query_value(query: dict[str, list[str]], key: str) -> str:
+    values = query.get(key) or []
+    return values[0] if values else ""
 
 
 def chat_history_db_path(config: ProjectConfig) -> Path:
@@ -1368,6 +1427,26 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       background: var(--accent-soft);
       color: var(--accent-strong);
     }
+    .bubble-actions {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .voice-btn {
+      min-height: 30px;
+      padding: 0 10px;
+      border-radius: 9px;
+      background: #edf3ff;
+      color: var(--blue);
+      border: 1px solid #d8e5ff;
+      font-size: 12px;
+      font-weight: 720;
+    }
+    .voice-btn:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
     .composer-wrap {
       align-self: end;
       padding: 12px 20px 18px;
@@ -1483,6 +1562,57 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       font-weight: 760;
     }
     .snippet { margin-top: 8px; color: #473940; font-size: 13px; overflow-wrap: anywhere; }
+    .trace-btn {
+      min-height: 26px;
+      padding: 0 9px;
+      border-radius: 8px;
+      background: #edf3ff;
+      color: var(--blue);
+      font-weight: 700;
+      border: 1px solid #d8e5ff;
+    }
+    .trace-panel {
+      width: min(860px, 100%);
+      margin: 10px auto 0;
+    }
+    .trace-panel details {
+      max-height: 40vh;
+    }
+    .trace-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .trace-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .trace-card {
+      padding: 10px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid #f0e2e7;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+    }
+    .dialogue-line {
+      display: grid;
+      gap: 4px;
+      padding: 9px 10px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid #f0e2e7;
+      font-size: 13px;
+    }
+    .dialogue-line strong {
+      color: var(--accent-strong);
+    }
+    .dialogue-ja {
+      color: var(--muted);
+    }
     .empty { color: var(--muted); font-size: 13px; padding: 2px 0; }
     .footer-note {
       width: min(860px, 100%);
@@ -1581,6 +1711,12 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
             <div class="detail-body" id="contexts"><div class="empty">还没有检索片段。</div></div>
           </details>
         </div>
+        <div class="trace-panel">
+          <details id="traceDetails">
+            <summary>原文追溯</summary>
+            <div class="detail-body" id="traceBody"><div class="empty">点击来源里的“追溯”查看场景卡和原始对话。</div></div>
+          </details>
+        </div>
         <div class="footer-note">本地模型回复可能会出错；关键设定以右侧引用来源为准。</div>
       </section>
     </main>
@@ -1596,6 +1732,8 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
     const contextsEl = document.getElementById('contexts');
     const sourcesDetailsEl = document.getElementById('sourcesDetails');
     const contextsDetailsEl = document.getElementById('contextsDetails');
+    const traceDetailsEl = document.getElementById('traceDetails');
+    const traceBodyEl = document.getElementById('traceBody');
     const statusEl = document.getElementById('status');
     const conversationListEl = document.getElementById('conversationList');
     const sendBtn = document.getElementById('sendBtn');
@@ -1630,6 +1768,18 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       details.addEventListener('toggle', () => {
         if (details.open) details.classList.remove('has-new');
       });
+    });
+    document.addEventListener('click', async (event) => {
+      const voiceButton = event.target.closest('[data-play-tts]');
+      if (voiceButton) {
+        event.preventDefault();
+        await playTTS(voiceButton);
+        return;
+      }
+      const traceButton = event.target.closest('[data-trace-scene-id]');
+      if (!traceButton) return;
+      event.preventDefault();
+      await loadTrace(traceButton.dataset.traceSceneId);
     });
     sendBtn.addEventListener('click', () => runChatSaki());
     chatBtn.addEventListener('click', () => runChatSaki());
@@ -1720,6 +1870,8 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       welcomeEl.style.display = 'grid';
       sourcesEl.innerHTML = '<div class="empty">还没有引用来源。</div>';
       contextsEl.innerHTML = '<div class="empty">还没有检索片段。</div>';
+      traceBodyEl.innerHTML = '<div class="empty">点击来源里的“追溯”查看场景卡和原始对话。</div>';
+      traceDetailsEl.open = false;
       resetDetailNotice(sourcesDetailsEl);
       resetDetailNotice(contextsDetailsEl);
       setStatus('待机中');
@@ -1799,6 +1951,7 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       if (!body.question || busy) return;
       appendMessage('user', body.question);
       const assistantNode = appendMessage('assistant', '');
+      assistantNode.classList.add('streaming');
       questionEl.value = '';
       setBusy(true, '咲季正在思考...');
       let fullMessage = '';
@@ -1834,11 +1987,13 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
         if (!doneEvent) {
           throw new Error('流式生成没有正常结束');
         }
+        assistantNode.classList.remove('streaming');
         chatHistory.push({user: body.question, assistant: fullMessage});
         chatHistory = chatHistory.slice(-8);
         await loadConversations();
         setStatus('回复完成');
       } catch (error) {
+        assistantNode.classList.remove('streaming');
         updateMessage(assistantNode, fullMessage ? `${fullMessage}\n\n出错了：${error.message}` : `出错了：${error.message}`);
         setStatus('请求失败');
       } finally {
@@ -1896,13 +2051,18 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       const metaHtml = meta.length
         ? `<div class="bubble-meta">${meta.map((item) => `<span class="tag">${escapeText(item)}</span>`).join('')}</div>`
         : '';
-      node.innerHTML = `${avatar}<div class="bubble"><span class="bubble-text">${escapeText(text)}</span>${metaHtml}</div>`;
+      const actionsHtml = role === 'assistant'
+        ? `<div class="bubble-actions"><button class="voice-btn" type="button" data-play-tts ${text.trim() ? '' : 'disabled'}>播放语音</button></div>`
+        : '';
+      node.dataset.voiceText = text;
+      node.innerHTML = `${avatar}<div class="bubble"><span class="bubble-text">${escapeText(text)}</span>${metaHtml}${actionsHtml}</div>`;
       messagesEl.appendChild(node);
       scrollChatToBottom();
       return node;
     }
 
     function updateMessage(node, text, meta = []) {
+      node.dataset.voiceText = text;
       const textEl = node.querySelector('.bubble-text');
       if (textEl) textEl.textContent = text;
       const bubble = node.querySelector('.bubble');
@@ -1913,9 +2073,46 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
         const metaEl = document.createElement('div');
         metaEl.className = 'bubble-meta';
         metaEl.innerHTML = meta.map((item) => `<span class="tag">${escapeText(item)}</span>`).join('');
-        bubble.appendChild(metaEl);
+        const actions = bubble.querySelector('.bubble-actions');
+        bubble.insertBefore(metaEl, actions || null);
       }
+      const voiceButton = bubble.querySelector('[data-play-tts]');
+      if (voiceButton) voiceButton.disabled = !text.trim();
       scrollChatToBottom();
+    }
+
+    async function playTTS(button) {
+      const messageNode = button.closest('.message');
+      if (!messageNode || messageNode.classList.contains('streaming')) {
+        setStatus('回复生成完再播放语音');
+        return;
+      }
+      const text = (messageNode.dataset.voiceText || messageNode.querySelector('.bubble-text')?.textContent || '').trim();
+      if (!text) return;
+      const previousLabel = button.textContent;
+      button.disabled = true;
+      button.textContent = '生成中...';
+      setStatus('正在生成咲季语音...');
+      try {
+        const data = await postJSON('/api/tts/saki', {text});
+        const audio = new Audio(data.audio_url);
+        button.textContent = data.cached ? '播放中' : '已生成';
+        await audio.play();
+        audio.addEventListener('ended', () => {
+          button.disabled = false;
+          button.textContent = previousLabel;
+          setStatus('语音播放完成');
+        }, {once: true});
+        audio.addEventListener('error', () => {
+          button.disabled = false;
+          button.textContent = previousLabel;
+          setStatus('语音播放失败');
+        }, {once: true});
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = previousLabel;
+        setStatus(`语音失败：${error.message}`);
+      }
     }
 
     function renderMessages(messages) {
@@ -1985,6 +2182,50 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       detailsEl.classList.toggle('has-new', Boolean(hasItems));
     }
 
+    async function loadTrace(sceneId) {
+      if (!sceneId) return;
+      traceDetailsEl.open = true;
+      traceBodyEl.innerHTML = '<div class="empty">正在读取原文追溯...</div>';
+      try {
+        const data = await getJSON(`/api/trace?scene_id=${encodeURIComponent(sceneId)}`);
+        renderTrace(data);
+      } catch (error) {
+        traceBodyEl.innerHTML = `<div class="empty">追溯失败：${escapeText(error.message)}</div>`;
+      }
+    }
+
+    function renderTrace(data) {
+      const summary = data.summary || {};
+      const dialogue = data.dialogue_lines || [];
+      const evidence = Array.isArray(summary.key_evidence) ? summary.key_evidence : [];
+      traceBodyEl.innerHTML = `
+        <div class="trace-grid">
+          <div class="trace-meta">
+            <span class="badge">${escapeText(data.scene_id || '')}</span>
+            <span>${escapeText(summary.title || '')}</span>
+            <span>${escapeText(summary.source_file || '')}</span>
+            <span>${escapeText(summary.chapter || '')}</span>
+            <span>${escapeText(summary.scene || '')}</span>
+          </div>
+          <div class="trace-card"><strong>摘要</strong>\n${escapeText(summary.summary || '无摘要。')}</div>
+          <div class="trace-card"><strong>咲季定位</strong>\n${escapeText(summary.saki_role || summary.saki_presence || '无。')}</div>
+          ${evidence.length ? `<div class="trace-card"><strong>证据摘录</strong>\n${evidence.map((item) => `- ${escapeText(item.source_row || '')} ${escapeText(item.speaker || '')}: ${escapeText(item.text_zh || '')}`).join('\\n')}</div>` : ''}
+          <div class="trace-card"><strong>场景卡</strong>\n${escapeText(compact(data.scene_card || '未找到场景卡。', 2200))}</div>
+          <div class="trace-card"><strong>原始对话</strong>\n${dialogue.length ? dialogue.map(renderDialogueLine).join('') : '未找到原始对话。'}</div>
+        </div>
+      `;
+    }
+
+    function renderDialogueLine(line) {
+      return `
+        <div class="dialogue-line">
+          <div><span class="badge">${escapeText(line.source_row || '')}</span> <strong>${escapeText(line.speaker || '')}</strong></div>
+          <div>${escapeText(line.text_zh || '')}</div>
+          <div class="dialogue-ja">${escapeText(line.text_ja || '')}</div>
+        </div>
+      `;
+    }
+
     function renderSources(sources) {
       if (!sources.length) {
         sourcesEl.innerHTML = '<div class="empty">这次没有返回引用来源。</div>';
@@ -1999,6 +2240,7 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
             <span>${escapeText(source.topic || '')}</span>
             <span>${escapeText((source.scene_ids || []).join(', '))}</span>
             <span>${formatDistance(source.distance)}</span>
+            ${renderTraceButton(firstSceneId(source.scene_ids || []))}
           </div>
         </div>
       `).join('');
@@ -2020,6 +2262,7 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
               <span>${escapeText(meta.source_path || '')}</span>
               <span>${escapeText(meta.topic || '')}</span>
               <span>${formatDistance(item.distance)}</span>
+              ${renderTraceButton(firstSceneId(meta.scene_ids || meta.scene_id || ''))}
             </div>
             <div class="snippet">${escapeText(compact(item.text || ''))}</div>
           </div>
@@ -2028,9 +2271,19 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       markDetailNotice(contextsDetailsEl, true);
     }
 
-    function compact(text) {
+    function firstSceneId(value) {
+      const raw = Array.isArray(value) ? value.join(' ') : String(value || '');
+      const match = raw.match(/scene-\\d{5}/);
+      return match ? match[0] : '';
+    }
+
+    function renderTraceButton(sceneId) {
+      return sceneId ? `<button class="trace-btn" type="button" data-trace-scene-id="${escapeText(sceneId)}">追溯</button>` : '';
+    }
+
+    function compact(text, maxLength = 900) {
       const clean = text.replace(/\\s+/g, ' ').trim();
-      return clean.length > 900 ? `${clean.slice(0, 900).trim()}...` : clean;
+      return clean.length > maxLength ? `${clean.slice(0, maxLength).trim()}...` : clean;
     }
 
     function formatDistance(value) {

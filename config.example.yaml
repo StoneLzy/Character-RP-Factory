@@ -87,6 +87,26 @@ rag:
   chunk_overlap: 80
   top_k: 5
 
+tts:
+  enabled: true
+  provider: gpt_sovits
+  base_url: http://127.0.0.1:9880
+  output_dir: GPT-SoVITS/outputs
+  ref_audio_path: GPT-SoVITS/5-wav32k/sud_vo_adv_dear_hski_001_hski-033.wav
+  prompt_text: 世界一のアイドルになるって決めたんだもの。
+  prompt_lang: ja
+  text_lang: ja
+  translate_to_japanese: true
+  translation_model: qwen3.5:9b
+  translation_base_url: http://localhost:11434
+  translation_timeout_seconds: 180
+  text_split_method: cut5
+  media_type: wav
+  batch_size: 1
+  speed_factor: 1.0
+  timeout_seconds: 180
+  max_text_chars: 600
+
 training:
   format: chatml
   base_model: Qwen3-4B-Instruct

@@ -1,4 +1,22 @@
-/.DS_Store
+.DS_Store
 __pycache__/
+**/__pycache__/
 *.pyc
 data/chat_history.sqlite3
+
+# Local vector/chat databases
+data/chroma_db/
+*.sqlite3
+
+# Local GPT-SoVITS assets, checkpoints, references, and generated audio
+GPT-SoVITS/
+*.ckpt
+*.pth
+*.pt
+*.safetensors
+*.onnx
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
