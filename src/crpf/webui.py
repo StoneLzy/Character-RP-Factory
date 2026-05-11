@@ -1554,6 +1554,17 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       color: var(--muted);
       font-size: 12px;
     }
+    .scene-list {
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+    .trace-actions {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 2px;
+    }
     .badge {
       padding: 2px 7px;
       border-radius: 999px;
@@ -1598,14 +1609,23 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       overflow-wrap: anywhere;
       font-size: 13px;
     }
+    .dialogue-card {
+      white-space: normal;
+    }
+    .dialogue-list {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
     .dialogue-line {
       display: grid;
-      gap: 4px;
-      padding: 9px 10px;
-      border-radius: 10px;
+      gap: 2px;
+      padding: 6px 8px;
+      border-radius: 8px;
       background: #fff;
       border: 1px solid #f0e2e7;
       font-size: 13px;
+      line-height: 1.45;
     }
     .dialogue-line strong {
       color: var(--accent-strong);
@@ -2211,7 +2231,7 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
           <div class="trace-card"><strong>咲季定位</strong>\n${escapeText(summary.saki_role || summary.saki_presence || '无。')}</div>
           ${evidence.length ? `<div class="trace-card"><strong>证据摘录</strong>\n${evidence.map((item) => `- ${escapeText(item.source_row || '')} ${escapeText(item.speaker || '')}: ${escapeText(item.text_zh || '')}`).join('\\n')}</div>` : ''}
           <div class="trace-card"><strong>场景卡</strong>\n${escapeText(compact(data.scene_card || '未找到场景卡。', 2200))}</div>
-          <div class="trace-card"><strong>原始对话</strong>\n${dialogue.length ? dialogue.map(renderDialogueLine).join('') : '未找到原始对话。'}</div>
+          <div class="trace-card dialogue-card"><strong>原始对话</strong>${dialogue.length ? `<div class="dialogue-list">${dialogue.map(renderDialogueLine).join('')}</div>` : '<div class="empty">未找到原始对话。</div>'}</div>
         </div>
       `;
     }
@@ -2238,9 +2258,9 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
             <span class="badge">${index + 1}</span>
             <span>${escapeText(source.label || source.source_path || '')}</span>
             <span>${escapeText(source.topic || '')}</span>
-            <span>${escapeText((source.scene_ids || []).join(', '))}</span>
             <span>${formatDistance(source.distance)}</span>
-            ${renderTraceButton(firstSceneId(source.scene_ids || []))}
+            <span class="scene-list">${escapeText(formatSceneIds(source.scene_ids || []))}</span>
+            ${renderTraceButtons(source.scene_ids || [])}
           </div>
         </div>
       `).join('');
@@ -2262,7 +2282,7 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
               <span>${escapeText(meta.source_path || '')}</span>
               <span>${escapeText(meta.topic || '')}</span>
               <span>${formatDistance(item.distance)}</span>
-              ${renderTraceButton(firstSceneId(meta.scene_ids || meta.scene_id || ''))}
+              ${renderTraceButtons(meta.scene_ids || meta.scene_id || '')}
             </div>
             <div class="snippet">${escapeText(compact(item.text || ''))}</div>
           </div>
@@ -2271,14 +2291,22 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       markDetailNotice(contextsDetailsEl, true);
     }
 
-    function firstSceneId(value) {
+    function sceneIdList(value) {
       const raw = Array.isArray(value) ? value.join(' ') : String(value || '');
-      const match = raw.match(/scene-\\d{5}/);
-      return match ? match[0] : '';
+      const matches = raw.match(/scene-\\d{5}/g) || [];
+      return [...new Set(matches)];
     }
 
-    function renderTraceButton(sceneId) {
-      return sceneId ? `<button class="trace-btn" type="button" data-trace-scene-id="${escapeText(sceneId)}">追溯</button>` : '';
+    function formatSceneIds(value) {
+      const ids = sceneIdList(value);
+      if (!ids.length) return '';
+      return ids.length === 1 ? ids[0] : `${ids.length} scenes: ${ids.join(', ')}`;
+    }
+
+    function renderTraceButtons(value) {
+      const ids = sceneIdList(value);
+      if (!ids.length) return '';
+      return `<div class="trace-actions">${ids.map((sceneId) => `<button class="trace-btn" type="button" data-trace-scene-id="${escapeText(sceneId)}">${escapeText(sceneId)}</button>`).join('')}</div>`;
     }
 
     function compact(text, maxLength = 900) {

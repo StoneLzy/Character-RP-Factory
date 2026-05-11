@@ -43,6 +43,10 @@ class WebUITests(unittest.TestCase):
         self.assertIn("markDetailNotice", html)
         self.assertIn("原文追溯", html)
         self.assertIn("data-trace-scene-id", html)
+        self.assertIn("sceneIdList", html)
+        self.assertIn("renderTraceButtons", html)
+        self.assertIn("dialogue-card", html)
+        self.assertIn("dialogue-list", html)
         self.assertNotIn("<details open>", html)
 
     def test_parse_top_k_and_backend_validate_ranges(self):
