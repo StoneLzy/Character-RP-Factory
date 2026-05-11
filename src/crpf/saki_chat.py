@@ -10,6 +10,7 @@ from .rag_index import RagSearchResult, query_rag_index
 
 
 CHAT_MODES = {"auto", "rag", "casual"}
+SAKI_CHAT_NUM_PREDICT = 3000
 
 
 RAG_KEYWORDS = (
@@ -120,7 +121,7 @@ def chat_saki(
         prompt=prepared.prompt,
         temperature=0.65,
         num_ctx=8192,
-        num_predict=700,
+        num_predict=SAKI_CHAT_NUM_PREDICT,
     )
     return SakiChatResponse(
         message=clean_saki_reply(answer),
@@ -291,6 +292,7 @@ def build_saki_prompt(
 - 你不是百科助手。回答要像咲季本人在说话，而不是报告。
 - 不要复述原作长台词，不要编造资料外原作事实。
 - 日常问题可以用咲季性格给建议；专业问题可以给普通建议，但不要假装那是原作设定。
+- 当用户明确要求编程、代码、脚本、配置或技术实现时，可以输出 Markdown 代码块，并优先保证代码完整、可读、可复制；不要因为角色身份拒绝写代码，也不要用闲聊替代代码。
 - {rag_rule}
 
 职责边界：

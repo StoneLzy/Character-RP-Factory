@@ -14,7 +14,7 @@ from .chat_store import ChatHistoryStore, Conversation, StoredMessage
 from .config import ProjectConfig
 from .rag_chat import ask_rag, stream_ollama_chat
 from .rag_index import RagSearchResult, query_rag_index
-from .saki_chat import CHAT_MODES, ChatTurn, chat_saki, clean_saki_reply, prepare_saki_chat
+from .saki_chat import CHAT_MODES, SAKI_CHAT_NUM_PREDICT, ChatTurn, chat_saki, clean_saki_reply, prepare_saki_chat
 from .source_trace import build_source_trace, normalize_scene_id
 from .tts import synthesize_saki_tts
 
@@ -371,7 +371,7 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
                     prompt=prepared.prompt,
                     temperature=0.65,
                     num_ctx=8192,
-                    num_predict=700,
+                    num_predict=SAKI_CHAT_NUM_PREDICT,
                 ):
                     parts.append(delta)
                     self.write_ndjson({"type": "delta", "text": delta})
@@ -1410,8 +1410,43 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       border-radius: 14px;
       padding: 13px 15px;
       box-shadow: 0 10px 30px rgba(122, 63, 82, 0.06);
-      white-space: pre-wrap;
       overflow-wrap: anywhere;
+    }
+    .bubble-text {
+      display: block;
+    }
+    .bubble-text p {
+      margin: 0 0 10px;
+      white-space: pre-wrap;
+    }
+    .bubble-text p:last-child { margin-bottom: 0; }
+    .bubble-text ul, .bubble-text ol {
+      margin: 0 0 10px;
+      padding-left: 22px;
+    }
+    .bubble-text li {
+      margin: 3px 0;
+    }
+    .bubble-text pre {
+      margin: 10px 0;
+      padding: 12px;
+      border-radius: 10px;
+      background: #241f22;
+      color: #f8f2f5;
+      overflow: auto;
+      white-space: pre;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .bubble-text code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    .bubble-text :not(pre) > code {
+      padding: 2px 5px;
+      border-radius: 6px;
+      background: #f5edf1;
+      color: #8d3154;
+      font-size: 0.92em;
     }
     .bubble-meta {
       margin-top: 10px;
@@ -2075,7 +2110,7 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
         ? `<div class="bubble-actions"><button class="voice-btn" type="button" data-play-tts ${text.trim() ? '' : 'disabled'}>播放语音</button></div>`
         : '';
       node.dataset.voiceText = text;
-      node.innerHTML = `${avatar}<div class="bubble"><span class="bubble-text">${escapeText(text)}</span>${metaHtml}${actionsHtml}</div>`;
+      node.innerHTML = `${avatar}<div class="bubble"><div class="bubble-text">${renderMarkdown(text)}</div>${metaHtml}${actionsHtml}</div>`;
       messagesEl.appendChild(node);
       scrollChatToBottom();
       return node;
@@ -2084,7 +2119,7 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
     function updateMessage(node, text, meta = []) {
       node.dataset.voiceText = text;
       const textEl = node.querySelector('.bubble-text');
-      if (textEl) textEl.textContent = text;
+      if (textEl) textEl.innerHTML = renderMarkdown(text);
       const bubble = node.querySelector('.bubble');
       if (!bubble) return;
       const oldMeta = bubble.querySelector('.bubble-meta');
@@ -2099,6 +2134,85 @@ def render_chatgpt_style_html(settings: WebUISettings) -> str:
       const voiceButton = bubble.querySelector('[data-play-tts]');
       if (voiceButton) voiceButton.disabled = !text.trim();
       scrollChatToBottom();
+    }
+
+    function renderMarkdown(value) {
+      const lines = String(value || '').replace(/\\r\\n/g, '\\n').split('\\n');
+      let html = '';
+      let paragraph = [];
+      let list = null;
+      let inCode = false;
+      let codeLang = '';
+      let codeLines = [];
+
+      const flushParagraph = () => {
+        if (!paragraph.length) return;
+        html += `<p>${renderInlineMarkdown(paragraph.join('\\n'))}</p>`;
+        paragraph = [];
+      };
+      const flushList = () => {
+        if (!list) return;
+        html += `<${list.type}>${list.items.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join('')}</${list.type}>`;
+        list = null;
+      };
+      const flushCode = () => {
+        const lang = codeLang ? ` data-lang="${escapeText(codeLang)}"` : '';
+        html += `<pre><code${lang}>${escapeText(codeLines.join('\\n'))}</code></pre>`;
+        codeLang = '';
+        codeLines = [];
+      };
+
+      for (const line of lines) {
+        const fence = line.match(/^```\\s*([\\w.+-]*)\\s*$/);
+        if (fence) {
+          if (inCode) {
+            flushCode();
+            inCode = false;
+          } else {
+            flushParagraph();
+            flushList();
+            inCode = true;
+            codeLang = fence[1] || '';
+            codeLines = [];
+          }
+          continue;
+        }
+        if (inCode) {
+          codeLines.push(line);
+          continue;
+        }
+        const unordered = line.match(/^\\s*[-*]\\s+(.+)$/);
+        const ordered = line.match(/^\\s*\\d+\\.\\s+(.+)$/);
+        if (unordered || ordered) {
+          flushParagraph();
+          const type = unordered ? 'ul' : 'ol';
+          if (!list || list.type !== type) {
+            flushList();
+            list = {type, items: []};
+          }
+          list.items.push((unordered || ordered)[1]);
+          continue;
+        }
+        if (!line.trim()) {
+          flushParagraph();
+          flushList();
+          continue;
+        }
+        flushList();
+        paragraph.push(line);
+      }
+      if (inCode) flushCode();
+      flushParagraph();
+      flushList();
+      return html || '<p></p>';
+    }
+
+    function renderInlineMarkdown(value) {
+      let html = escapeText(value);
+      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+      html = html.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+      html = html.replace(/\\n/g, '<br>');
+      return html;
     }
 
     async function playTTS(button) {

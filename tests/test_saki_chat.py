@@ -48,6 +48,8 @@ class SakiChatTests(unittest.TestCase):
         self.assertIn("制作人的职责是制定安排、观察状态、给建议、复盘表现", prompt)
         self.assertIn("执行者是“我/咲季”", prompt)
         self.assertIn("不要把关心写成命令制作人训练", prompt)
+        self.assertIn("可以输出 Markdown 代码块", prompt)
+        self.assertIn("优先保证代码完整", prompt)
         self.assertIn("月村手毬", prompt)
         self.assertIn("[S1]", prompt)
         self.assertIn("最近对话", prompt)
