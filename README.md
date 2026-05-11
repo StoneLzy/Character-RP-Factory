@@ -1,51 +1,127 @@
-# Character-RP-Factory
+# Character RP Factory
 
-把游戏角色对话 CSV 清洗成三类资产：
+从游戏剧情 CSV 构建角色扮演资产：清洗台词、导出微调样本、生成剧情 RAG 文档，并提供本地 Chat-Saki WebUI 与可选 GPT-SoVITS 语音播放。
 
-- 可审阅角色台词样本：`outputs/hski/*.csv`
-- LoRA / QLoRA 微调数据：后续导出 `training_samples.jsonl`
-- 本地 RAG 文档：`data/rag_docs/*.md`
+当前落地角色是《学园偶像大师》的花海咲季，项目代号 `hski`。代码尽量保持角色无关，配置和数据可以替换成其他角色。
 
-当前 MVP 目标角色是《学园偶像大师》的 `hski`，即花海咲季 / 咲季。原始素材保留在根目录的 `CSV/`，本项目代码默认从那里读取，不复制或改写原始文件。
+## 项目定位
 
-## 当前结构
+Character RP Factory 不是单纯的台词抽取脚本。它的目标是把原始游戏 CSV 变成三类可用资产：
+
+- **训练数据**：带上下文的角色回复样本，支持日文/中文 JSONL 导出。
+- **RAG 知识库**：覆盖咲季出场剧情的场景卡、人物关系、角色弧线、世界观和口吻资料。
+- **本地角色聊天**：基于 Ollama + RAG 的 Chat-Saki WebUI，支持历史聊天、来源追溯和可选语音输出。
+
+为了避免丢失剧情语境，RAG 部分会从完整原始 CSV 场景读取，而不是只看已经抽出来的咲季台词。
+
+## 当前能力
+
+- 递归合并 `CSV/**/*.csv`，保留原始剧情来源。
+- 清洗全量对话，筛选花海咲季相关台词。
+- 为每条咲季回复拼接同场景前文上下文。
+- 给样本打分，导出人工审核 CSV 和训练 JSONL。
+- 从原始 CSV 切分章节、场景、对话块，生成 500 张咲季相关场景卡。
+- 支持本地 LLM 批量摘要场景，并把摘要合并成 RAG Markdown。
+- 使用 ChromaDB 或内置 simple 后端构建本地向量索引。
+- 提供 `rag-query`、`rag-ask`、`chat-saki` 命令。
+- 提供 ChatGPT 风格 WebUI：历史聊天、流式回复、来源折叠、检索片段、原文追溯。
+- 可选接入 GPT-SoVITS：中文回复显示在页面上，语音播放时自动翻译成咲季口吻日语再合成。
+
+## 推荐标题
+
+如果是 GitHub 仓库标题，我最推荐：
+
+**Character RP Factory: Game Dialogue to RAG, LoRA & Voice Chat**
+
+其他候选：
+
+- **Character RP Factory**
+- **Saki RP Factory**
+- **Game Dialogue RP Factory**
+- **CSV-to-Character-RAG**
+- **Idol Character RP Lab**
+
+我的取舍：`Character RP Factory` 最适合作为仓库名，短、可扩展；副标题用 `Game Dialogue to RAG, LoRA & Voice Chat` 说明完整能力。
+
+## 目录结构
 
 ```text
 .
-├── CSV/                         # 原始游戏剧情 CSV，保持只读使用
-├── Character_RP_Factory_Project_Plan.docx
-├── config.example.yaml          # hski 配置模板
-├── config.yaml                  # 当前实际使用配置
+├── CSV/                         # 原始游戏 CSV，本地数据，不建议提交
+├── config.example.yaml          # 配置模板
+├── config.yaml                  # 本地实际配置
 ├── data/
-│   ├── characters/hski/          # 角色设定种子和人工资料
-│   ├── raw_csv/                  # 占位说明；当前 raw 来源是 ../CSV
-│   ├── processed/                # 清洗后的中间数据
-│   ├── rag_docs/                 # 后续生成/人工编辑 RAG Markdown
-│   └── chroma_db/                # 后续本地向量库
-├── examples/
-├── outputs/hski/                 # hski 的导出结果
+│   ├── characters/hski/          # 角色种子资料
+│   ├── processed/                # 清洗中间产物
+│   ├── rag_docs/                 # 最终 RAG Markdown 与 scenes 场景卡
+│   └── chroma_db/                # 本地向量库，已 gitignore
+├── outputs/                      # CSV/JSONL/摘要/报告等生成物
 ├── scripts/
-├── src/crpf/                     # Python CLI 包
+├── src/crpf/                     # CLI、RAG、WebUI、TTS 实现
 └── tests/
 ```
 
-## 快速开始
+本地 GPT-SoVITS 权重、参考音频和生成音频默认放在 `GPT-SoVITS/`，该目录已被 `.gitignore` 忽略。
+
+## 安装
+
+建议 Python 3.11+。
+
+```bash
+python3 -m pip install -e .
+```
+
+如果要使用 ChromaDB 向量库：
+
+```bash
+python3 -m pip install -e ".[rag]"
+```
+
+如果不安装包，也可以继续用：
 
 ```bash
 PYTHONPATH=src python3 -m crpf.cli --help
-PYTHONPATH=src python3 -m crpf.cli merge --config config.yaml
-PYTHONPATH=src python3 -m crpf.cli clean --config config.yaml
-PYTHONPATH=src python3 -m crpf.cli build-context --config config.yaml
-PYTHONPATH=src python3 -m crpf.cli score --config config.yaml
-PYTHONPATH=src python3 -m crpf.cli export-jsonl --config config.yaml --language both
-PYTHONPATH=src python3 -m crpf.cli build-rag-docs --config config.yaml
-PYTHONPATH=src python3 -m crpf.cli summarize-raw-rag --config config.yaml
-PYTHONPATH=src python3 -m crpf.cli summarize-scenes-llm --config config.yaml --model qwen3.5:9b --summary-mode fast
-PYTHONPATH=src python3 -m crpf.cli prepare-consolidation-inputs --config config.yaml
 ```
 
-`merge` 会递归读取 `CSV/**/*.csv`，输出 `outputs/hski/merged.csv`。`clean` 会标准化字段、清理系统行和空台词，并输出：
+安装后可直接使用：
 
+```bash
+crpf --help
+```
+
+## 配置
+
+复制模板后编辑：
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+关键配置：
+
+- `paths.raw_csv_dir`: 原始 CSV 目录，默认 `CSV`
+- `character.target_names`: 目标角色别名，当前是咲季/花海咲季/hski
+- `rag.embedding_model`: 默认 `bge-m3`
+- `rag.chat_model`: 默认 `qwen3.5:9b`
+- `rag.ollama_base_url`: 默认 `http://localhost:11434`
+- `tts.base_url`: GPT-SoVITS API 地址，默认 `http://127.0.0.1:9880`
+- `tts.output_dir`: 语音缓存目录，默认 `GPT-SoVITS/outputs`
+
+## 训练样本流水线
+
+从原始 CSV 到可微调 JSONL：
+
+```bash
+crpf merge --config config.yaml
+crpf clean --config config.yaml
+crpf build-context --config config.yaml
+crpf score --config config.yaml
+crpf export-jsonl --config config.yaml --language both
+```
+
+主要产物：
+
+- `outputs/hski/merged.csv`
 - `outputs/hski/cleaned.csv`
 - `outputs/hski/character_lines.csv`
 - `outputs/hski/samples_with_context.csv`
@@ -53,180 +129,239 @@ PYTHONPATH=src python3 -m crpf.cli prepare-consolidation-inputs --config config.
 - `outputs/hski/review_samples.csv`
 - `outputs/hski/training_samples_ja.jsonl`
 - `outputs/hski/training_samples_zh.jsonl`
-- `data/rag_docs/character_profile.md`
-- `data/rag_docs/plot_summary.md`
-- `data/rag_docs/relationships.md`
-- `data/rag_docs/worldbuilding.md`
-- `data/rag_docs/dialogue_patterns.md`
 
-注意：`character_lines.csv` 只是目标角色回复索引。`build-context` 会回到完整的 `cleaned.csv`，在同一个 `source_file` 内按原始行号取前 N 句，所以不会用“只剩咲季台词”的文件硬拼上下文。
+说明：
 
-`score` 会给样本增加 `quality_score` 和 `quality_reason`，并生成带人工审核字段的 `review_samples.csv`：`keep`、`notes`、`emotion`、`intent`、`tone`、`relationship`。`export-jsonl` 默认导出 ChatML `messages` 格式，也可以用 `--format instruction` 导出 instruction/input/output 格式。
+- `character_lines.csv` 只是目标角色回复索引。
+- `build-context` 会回到完整 `cleaned.csv`，按同一个 `source_file` 和原始行号取前文，不会用“只剩咲季台词”的文件硬拼上下文。
+- `review_samples.csv` 带人工审核字段：`keep`、`notes`、`emotion`、`intent`、`tone`、`relationship`。
+- `export-jsonl` 支持 `--format chatml` 和 `--format instruction`。
 
-JSONL 会区分语言版本：
+## RAG 文档流水线
 
-- `--language ja`: 使用日文 `context` / `response`，输出 `training_samples_ja.jsonl`
-- `--language zh`: 使用中文 `context_translation` / `response_translation`，输出 `training_samples_zh.jsonl`
-- `--language both`: 同时输出两份
+快速生成模板：
 
-## RAG 文档人工编辑
+```bash
+crpf build-rag-docs --config config.yaml
+```
 
-运行 `build-rag-docs` 会在 `data/rag_docs/` 下生成五个 Markdown 模板。每个模板包含说明、TODO、基础统计、人工总结区和少量候选台词样例。
+从完整原始 CSV 构建咲季相关场景资料：
 
-如果需要从原始 CSV 的完整场景生成中文 RAG 摘要，运行 `summarize-raw-rag`。它会直接读取 `CSV/`，轻清洗全量对话，筛出所有与花海咲季相关的完整场景/对话块，并生成：
+```bash
+crpf summarize-raw-rag --config config.yaml
+```
 
-- `outputs/scene_chunks.jsonl`
-- `outputs/scene_summaries.jsonl`
-- `outputs/topic_summaries/plot_summary.md`
-- `outputs/topic_summaries/worldbuilding_summary.md`
-- `outputs/topic_summaries/relationships_summary.md`
-- `outputs/topic_summaries/character_arc_summary.md`
-- `outputs/topic_summaries/team_story_summary.md`
-- `outputs/topic_summaries/dialogue_style_summary.md`
-- `data/rag_docs/plot_summary.md`
-- `data/rag_docs/worldbuilding.md`
-- `data/rag_docs/relationships.md`
-- `data/rag_docs/character_profile.md`
-- `data/rag_docs/team_story.md`
-- `data/rag_docs/dialogue_patterns.md`
-
-`summarize-raw-rag` 是规则式场景卡。要让本地 LLM 真正阅读每个 CSV 场景并生成结构化摘要，先确保 Ollama 已启动并拉取模型，然后运行：
+使用本地 LLM 真正阅读场景并生成结构化摘要：
 
 ```bash
 ollama pull qwen3.5:9b
-PYTHONPATH=src python3 -m crpf.cli summarize-scenes-llm --config config.yaml --model qwen3.5:9b --summary-mode fast
+crpf summarize-scenes-llm --config config.yaml --model qwen3.5:9b --summary-mode fast
 ```
 
-`fast` 模式会关闭 thinking、缩短 prompt、限制生成长度，适合批量跑 500 个场景。需要更完整的人工审核卡时可以改用 `--summary-mode full --model qwen3:14b`，但速度会明显变慢。这个命令支持断点续跑；测试少量场景可加 `--limit 5`。
+`fast` 模式会关闭 thinking、缩短 prompt、限制生成长度，适合批量跑 500 个场景。测试时可以加：
+
+```bash
+crpf summarize-scenes-llm --config config.yaml --model qwen3.5:9b --summary-mode fast --limit 5
+```
+
+场景摘要完成后：
+
+```bash
+crpf review-rag --config config.yaml
+crpf prepare-consolidation-inputs --config config.yaml
+```
+
+如果你用网页版 GPT 做二次合并，把结果放到 `outputs/consolidation_outputs/` 后同步：
+
+```bash
+crpf sync-consolidated-rag --config config.yaml
+```
+
+最终 RAG 文档：
+
+- `data/rag_docs/index.md`
+- `data/rag_docs/character_profile.md`
+- `data/rag_docs/plot_summary.md`
+- `data/rag_docs/relationships.md`
+- `data/rag_docs/worldbuilding.md`
+- `data/rag_docs/team_story.md`
+- `data/rag_docs/dialogue_patterns.md`
+- `data/rag_docs/scenes/*.md`
+
+当前 hski RAG 包含 500 张场景卡，覆盖约 200 个与咲季相关的 CSV 文件。
 
 编辑原则：
 
-- 把候选台词当证据，不要把 CSV 原文整段复制进 RAG。
-- 优先写人工总结后的稳定事实、关系、口吻规则和世界观设定。
-- 对不确定内容加 `待核对`，不要让 RAG 把猜测当事实。
-- 角色风格放进 `character_profile.md` 和 `dialogue_patterns.md`。
-- 剧情事实放进 `plot_summary.md`，人物关系放进 `relationships.md`，学园/偶像活动设定放进 `worldbuilding.md`。
+- RAG 文档写稳定事实、剧情摘要、关系、口吻规则和世界观。
+- 不要把原始台词整段复制进 RAG 文档。
+- 不确定内容标 `待核对`。
+- 角色性格和说话模式放 `character_profile.md` / `dialogue_patterns.md`。
+- 剧情事实放 `plot_summary.md`，关系放 `relationships.md`，学园/偶像活动设定放 `worldbuilding.md`。
 
-如果要把 500 条场景摘要交给网页版 GPT 做二次大总结，可以先运行：
+## RAG 入库与问答
 
-```bash
-PYTHONPATH=src python3 -m crpf.cli prepare-consolidation-inputs --config config.yaml
-```
-
-它会生成 `outputs/consolidation_inputs/`，里面包含按目标 RAG 文档整理好的输入材料和提示词。
-
-## 本地 RAG 入库与检索
-
-RAG 入库会把 `data/rag_docs/*.md` 的高层总结和 `data/rag_docs/scenes/*.md` 的 500 张场景卡切块、向量化，并写入本地向量索引。默认配置使用 Ollama 的 `bge-m3` embedding 模型。
-
-网络正常时推荐安装 ChromaDB：
+推荐使用 Ollama `bge-m3` 做 embedding：
 
 ```bash
 ollama pull bge-m3
-python3 -m pip install -e ".[rag]"
-PYTHONPATH=src python3 -m crpf.cli build-rag-index --config config.yaml --reset
+crpf build-rag-index --config config.yaml --reset
 ```
 
-如果暂时没有网络、装不了 ChromaDB，也可以直接使用内置的简单 JSONL 向量索引：
+如果没有 ChromaDB，可以使用内置 simple 后端：
 
 ```bash
-PYTHONPATH=src python3 -m crpf.cli build-rag-index --config config.yaml --backend simple --reset
+crpf build-rag-index --config config.yaml --backend simple --reset
 ```
 
-入库完成后可以先做检索验收：
+检索验收：
 
 ```bash
-PYTHONPATH=src python3 -m crpf.cli rag-query --config config.yaml "咲季和佑芽是什么关系？"
-PYTHONPATH=src python3 -m crpf.cli rag-query --config config.yaml "咲季为什么害怕输给妹妹？"
-PYTHONPATH=src python3 -m crpf.cli rag-query --config config.yaml "咲季的说话风格有什么特点？"
+crpf rag-query --config config.yaml "咲季和佑芽是什么关系？"
+crpf rag-query --config config.yaml "咲季为什么害怕输给妹妹？"
+crpf rag-query --config config.yaml "咲季的说话风格有什么特点？"
 ```
 
-`--backend auto` 会优先用 ChromaDB；如果没安装 ChromaDB，就使用内置简单索引。`rag-query` 会显示召回 chunk 的来源文件、主题、`scene_id` 和摘要片段。召回质量确认后，再接聊天模型做真正的 RAG 问答/角色扮演。
-
-### RAG 知识问答
-
-`rag-ask` 会先用 `bge-m3` 检索向量库，再把召回资料交给本地聊天模型生成中文回答。它只做知识问答，不扮演咲季：
+知识问答：
 
 ```bash
-PYTHONPATH=src python3 -m crpf.cli rag-ask --config config.yaml "咲季为什么害怕输给佑芽？"
-PYTHONPATH=src python3 -m crpf.cli rag-ask --config config.yaml --top-k 4 "咲季和制作人的关系是什么？"
-PYTHONPATH=src python3 -m crpf.cli rag-ask --config config.yaml --show-context "咲季的说话风格有什么特点？"
+crpf rag-ask --config config.yaml "咲季为什么害怕输给佑芽？"
+crpf rag-ask --config config.yaml --top-k 4 "咲季和制作人的关系是什么？"
+crpf rag-ask --config config.yaml --show-context "咲季的说话风格有什么特点？"
 ```
 
-默认聊天模型来自 `config.yaml` 的 `rag.chat_model`，当前推荐 `qwen3.5:9b`。如果回答牵强引用了弱相关来源，可以降低 `--top-k` 到 3 或 4；如果资料不够，可以提高到 6 或 8 并加 `--show-context` 检查召回内容。
+`rag-ask` 是知识问答，不扮演咲季。它会根据 RAG 资料用中文回答，并输出来源。
 
-### 本地 WebUI
+## Chat-Saki
 
-可以启动一个本地页面来使用 `rag-query`、`rag-ask` 和 `chat-saki`：
+命令行单轮聊天：
 
 ```bash
-PYTHONPATH=src python3 -m crpf.cli webui --config config.yaml --port 8765
+crpf chat-saki --config config.yaml "今天有点累，鼓励我一下"
+crpf chat-saki --config config.yaml --show-sources "讲讲名古屋公演"
+crpf chat-saki --config config.yaml --mode rag --show-sources "你和佑芽是什么关系？"
 ```
 
-然后打开 `http://127.0.0.1:8765`。页面支持输入问题、调整 `Top K`、切换后端，使用“问答”“检索”或“咲季聊天”，并查看回答、来源和召回上下文。左侧边栏会显示历史聊天，聊天记录会保存在本地 SQLite 数据库 `data/chat_history.sqlite3`；咲季聊天可选择 `auto/rag/casual`。如果本机 GPT-SoVITS API 已启动，咲季回复旁的“播放语音”会调用 `config.yaml` 的 `tts` 配置生成音频，缓存到 `GPT-SoVITS/outputs/`，重复播放会直接复用缓存。默认语音模式会先把中文回复翻译成咲季口吻的日语，再用 `text_lang: ja` 合成；同目录下的 `.json` 会记录原中文和实际送入 GPT-SoVITS 的日语文本。也可以加 `--open` 自动打开浏览器：
+交互聊天：
 
 ```bash
-PYTHONPATH=src python3 -m crpf.cli webui --config config.yaml --port 8765 --open
+crpf chat-saki --config config.yaml
 ```
 
-GPT-SoVITS API 示例启动命令：
+交互中可以输入 `/auto`、`/rag`、`/casual` 切换模式，输入 `/exit` 退出。
+
+`chat-saki` 的默认 `auto` 模式会自动判断是否需要检索：剧情、设定、关系、口吻问题会查 RAG；日常聊天、鼓励和计划建议会直接按角色人格回答。
+
+## WebUI
+
+启动本地页面：
+
+```bash
+crpf webui --config config.yaml --port 8765
+```
+
+然后打开：
+
+```text
+http://127.0.0.1:8765
+```
+
+也可以自动打开：
+
+```bash
+crpf webui --config config.yaml --port 8765 --open
+```
+
+WebUI 支持：
+
+- ChatGPT 风格对话布局。
+- 左侧历史聊天，SQLite 存在 `data/chat_history.sqlite3`。
+- 流式 Chat-Saki 回复。
+- `auto/rag/casual` 模式切换。
+- RAG 来源折叠和检索片段折叠。
+- 来源新内容小蓝点提示。
+- 原文追溯：从来源跳到场景卡和原始对话。
+- 可选播放咲季语音。
+
+## GPT-SoVITS 语音
+
+WebUI 的语音链路是：
+
+```text
+中文回复显示在页面上
+-> 点击“播放语音”
+-> 后端把中文翻译成咲季口吻日语
+-> GPT-SoVITS 用 text_lang=ja 合成
+-> wav 缓存到 GPT-SoVITS/outputs/
+```
+
+启动 GPT-SoVITS API 示例：
 
 ```bash
 cd "/Users/stonelzy/Personal/GPT-SoVITS 2"
 ./runtime/bin/python3 api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml
 ```
 
-### 咲季角色聊天
+当前默认配置：
 
-`chat-saki` 会以花海咲季身份回复。默认 `--mode auto` 会自动判断是否需要检索：剧情、设定、关系、口吻问题会查 RAG；日常聊天、鼓励、计划建议会直接按角色人格回答。
-
-单轮测试：
-
-```bash
-PYTHONPATH=src python3 -m crpf.cli chat-saki --config config.yaml "今天有点累，鼓励我一下"
-PYTHONPATH=src python3 -m crpf.cli chat-saki --config config.yaml --show-sources "讲讲名古屋公演"
-PYTHONPATH=src python3 -m crpf.cli chat-saki --config config.yaml --mode rag --show-sources "你和佑芽是什么关系？"
+```yaml
+tts:
+  enabled: true
+  provider: gpt_sovits
+  base_url: http://127.0.0.1:9880
+  output_dir: GPT-SoVITS/outputs
+  ref_audio_path: GPT-SoVITS/5-wav32k/sud_vo_adv_dear_hski_001_hski-033.wav
+  prompt_lang: ja
+  text_lang: ja
+  translate_to_japanese: true
 ```
 
-交互聊天：
+同一句回复会命中缓存，不会重复翻译和合成。缓存旁边的 `.json` 会记录原中文、日语语音文本、模型和路径。
 
-```bash
-PYTHONPATH=src python3 -m crpf.cli chat-saki --config config.yaml
+如果要切回中文直出语音：
+
+```yaml
+tts:
+  text_lang: zh
+  translate_to_japanese: false
 ```
 
-交互中可以输入 `/auto`、`/rag`、`/casual` 切换模式，输入 `/exit` 退出。
+## 数据和版权边界
 
-## hski 数据说明
+本仓库默认不提交：
 
-当前 `CSV/` 中与 `hski` 直接相关的文件约 200 个，覆盖：
+- 原始 `CSV/` 数据。
+- GPT-SoVITS 权重、参考音频、生成音频。
+- ChromaDB / SQLite 本地数据库。
+- Python `__pycache__`。
 
-- `pstory/hski`: 主线培育剧情
-- `cidol/hski`: 卡牌/角色剧情
-- `dear/hski`: 亲爱度/交流剧情
-- `pevent/hski`: 培育事件
-- `pgrowth/hski`: 成长剧情
-- `live/hski`: 演出开始/结束短台词
-- `other/*hski*`: 教程、生日、抽卡等零散台词
-
-CSV 字段目前主要是：
-
-```text
-id,name,text,trans
-```
-
-其中 `name` 是说话人，`text` 是日文原文，`trans` 是中文译文。默认清洗时保留 `text` 和 `trans`，筛选目标角色时主要匹配 `name` 中的 `咲季`、`花海咲季` 等别名。
-
-## 下一步里程碑
-
-1. 上下文构造：为每条咲季回复拼接前 N 句上下文。
-2. 样本评分与人工审核：生成 `review_samples.csv` 和 `good_samples.csv`。
-3. JSONL 导出：支持 ChatML 和 instruction 格式。
-4. RAG 文档模板：生成角色风格、剧情摘要、关系、世界观、对话模式。
-5. 本地 RAG：ChromaDB + Ollama。
-6. MLX LoRA 训练准备：验证 JSONL，提供训练命令模板。
+这些内容都应保留在本地。RAG 文档也应以摘要和人工整理为主，不以复刻原作长台词为目标。
 
 ## 验证
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
+当前测试覆盖 CSV 清洗、上下文构造、JSONL 导出、RAG 索引、RAG 问答、Chat-Saki、WebUI、来源追溯和 TTS 缓存逻辑。
+
+## 常用命令速查
+
+```bash
+crpf merge --config config.yaml
+crpf clean --config config.yaml
+crpf build-context --config config.yaml
+crpf score --config config.yaml
+crpf export-jsonl --config config.yaml --language both
+
+crpf summarize-raw-rag --config config.yaml
+crpf summarize-scenes-llm --config config.yaml --model qwen3.5:9b --summary-mode fast
+crpf review-rag --config config.yaml
+crpf prepare-consolidation-inputs --config config.yaml
+crpf sync-consolidated-rag --config config.yaml
+
+crpf build-rag-index --config config.yaml --reset
+crpf rag-query --config config.yaml "讲讲名古屋公演"
+crpf rag-ask --config config.yaml "咲季和佑芽是什么关系？"
+crpf chat-saki --config config.yaml "今天有点累，鼓励我一下"
+crpf webui --config config.yaml --port 8765
 ```
