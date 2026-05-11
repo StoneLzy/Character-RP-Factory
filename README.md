@@ -87,11 +87,33 @@ cp config.example.yaml config.yaml
 - `paths.raw_csv_dir`: 原始 CSV 目录，默认 `CSV`
 - `paths.output_dir`: 当前角色样本输出目录，建议使用 `outputs/<character_id>`
 - `character.target_names`: 目标角色别名
-- `rag.embedding_model`: embedding 模型，默认 `bge-m3`
-- `rag.chat_model`: 本地聊天模型，默认 `qwen3.5:9b`
-- `rag.ollama_base_url`: Ollama 地址，默认 `http://localhost:11434`
+- `embedding.provider`: embedding 后端，支持 `ollama` 或 `openai_compatible`
+- `embedding.model`: embedding 模型名，本地默认 `bge-m3`
+- `embedding.base_url`: embedding API 地址，Ollama 默认 `http://localhost:11434`
+- `llm.provider`: 对话模型后端，支持 `ollama` 或 `openai_compatible`
+- `llm.model`: 对话模型名，本地默认 `qwen3.5:9b`
+- `llm.base_url`: 对话 API 地址；OpenAI-compatible 一般填到 `/v1`
+- `*.api_key_env`: API key 所在环境变量名，本地 Ollama 可留空
 - `tts.base_url`: 本地语音合成 API 地址，默认 `http://127.0.0.1:9880`
 - `tts.output_dir`: 语音缓存目录
+
+`rag.embedding_model`、`rag.chat_model` 和 `rag.ollama_base_url` 仍作为旧配置兼容保留；新流程优先读取 `embedding` 与 `llm` 两个配置块。
+
+使用 OpenAI-compatible API 时，可以这样改：
+
+```yaml
+llm:
+  provider: openai_compatible
+  model: your-chat-model
+  base_url: https://api.example.com/v1
+  api_key_env: YOUR_API_KEY_ENV
+
+embedding:
+  provider: openai_compatible
+  model: your-embedding-model
+  base_url: https://api.example.com/v1
+  api_key_env: YOUR_API_KEY_ENV
+```
 
 ## 训练样本流水线
 

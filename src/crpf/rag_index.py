@@ -7,8 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-import requests
-
+from .providers import ModelProviderConfig, embed_texts
 
 SCENE_ID_RE = re.compile(r"scene-\d{5}")
 HEADING_RE = re.compile(r"^(#{1,4})\s+(.+?)\s*$", re.MULTILINE)
@@ -55,6 +54,9 @@ def build_rag_index(
     collection_name: str,
     embedding_model: str,
     ollama_base_url: str,
+    embedding_provider: str = "ollama",
+    embedding_base_url: str | None = None,
+    embedding_api_key_env: str = "",
     chunk_size: int = 500,
     chunk_overlap: int = 80,
     reset: bool = False,
@@ -65,10 +67,15 @@ def build_rag_index(
     if not chunks:
         raise ValueError(f"No RAG Markdown chunks found under {rag_docs_dir}")
 
-    embeddings = ollama_embed_texts(
-        [chunk.text for chunk in chunks],
+    provider_config = ModelProviderConfig(
+        provider=embedding_provider,
         model=embedding_model,
-        base_url=ollama_base_url,
+        base_url=embedding_base_url or ollama_base_url,
+        api_key_env=embedding_api_key_env,
+    )
+    embeddings = embed_texts(
+        provider_config,
+        [chunk.text for chunk in chunks],
     )
     resolved_backend = resolve_backend(backend)
     if resolved_backend == "chroma":
@@ -99,6 +106,9 @@ def query_rag_index(
     collection_name: str,
     embedding_model: str,
     ollama_base_url: str,
+    embedding_provider: str = "ollama",
+    embedding_base_url: str | None = None,
+    embedding_api_key_env: str = "",
     top_k: int = 5,
     backend: str = "auto",
 ) -> list[RagSearchResult]:
@@ -106,7 +116,13 @@ def query_rag_index(
     if not query.strip():
         raise ValueError("query must not be empty")
 
-    embedding = ollama_embed_texts([query], model=embedding_model, base_url=ollama_base_url)[0]
+    provider_config = ModelProviderConfig(
+        provider=embedding_provider,
+        model=embedding_model,
+        base_url=embedding_base_url or ollama_base_url,
+        api_key_env=embedding_api_key_env,
+    )
+    embedding = embed_texts(provider_config, [query])[0]
     resolved_backend = resolve_backend(backend)
     if resolved_backend == "simple":
         return query_simple_vector_index(embedding, chroma_dir, collection_name, top_k=top_k)
@@ -401,52 +417,28 @@ def ollama_embed_texts(
     batch_size: int = 16,
     timeout: int = 120,
 ) -> list[list[float]]:
-    inputs = [text for text in texts]
-    if not inputs:
-        return []
-
-    session = requests.Session()
-    session.trust_env = False
-    embeddings: list[list[float]] = []
-    endpoint = f"{base_url.rstrip('/')}/api/embed"
-
-    for offset in range(0, len(inputs), batch_size):
-        batch = inputs[offset : offset + batch_size]
-        response = session.post(
-            endpoint,
-            json={"model": model, "input": batch},
-            timeout=timeout,
-        )
-        if response.status_code == 404:
-            embeddings.extend(ollama_embed_texts_legacy(session, batch, model, base_url, timeout))
-            continue
-        response.raise_for_status()
-        payload = response.json()
-        batch_embeddings = payload.get("embeddings")
-        if not isinstance(batch_embeddings, list):
-            raise RuntimeError(f"Ollama embedding response missing 'embeddings': {payload}")
-        embeddings.extend([[float(value) for value in item] for item in batch_embeddings])
-    return embeddings
+    return embed_texts(
+        ModelProviderConfig(provider="ollama", model=model, base_url=base_url),
+        texts,
+        batch_size=batch_size,
+        timeout=timeout,
+    )
 
 
 def ollama_embed_texts_legacy(
-    session: requests.Session,
+    session: Any,
     texts: list[str],
     model: str,
     base_url: str,
     timeout: int,
 ) -> list[list[float]]:
-    endpoint = f"{base_url.rstrip('/')}/api/embeddings"
-    embeddings: list[list[float]] = []
-    for text in texts:
-        response = session.post(endpoint, json={"model": model, "prompt": text}, timeout=timeout)
-        response.raise_for_status()
-        payload = response.json()
-        embedding = payload.get("embedding")
-        if not isinstance(embedding, list):
-            raise RuntimeError(f"Ollama legacy embedding response missing 'embedding': {payload}")
-        embeddings.append([float(value) for value in embedding])
-    return embeddings
+    del session
+    return embed_texts(
+        ModelProviderConfig(provider="ollama", model=model, base_url=base_url),
+        texts,
+        batch_size=1,
+        timeout=timeout,
+    )
 
 
 def stable_chunk_id(rel_path: str, index: int, text: str) -> str:

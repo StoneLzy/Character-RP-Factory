@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from .rag_chat import RagSource, build_sources, call_ollama_chat, format_source_line, trim_context_text
+from .rag_chat import RagSource, build_sources, call_chat_provider, format_source_line, trim_context_text
 from .rag_index import RagSearchResult, query_rag_index
 
 
@@ -95,6 +95,12 @@ def chat_saki(
     embedding_model: str,
     chat_model: str,
     ollama_base_url: str,
+    embedding_provider: str = "ollama",
+    embedding_base_url: str | None = None,
+    embedding_api_key_env: str = "",
+    chat_provider: str = "ollama",
+    chat_base_url: str | None = None,
+    chat_api_key_env: str = "",
     mode: str = "auto",
     top_k: int = 4,
     backend: str = "auto",
@@ -108,6 +114,9 @@ def chat_saki(
         collection_name=collection_name,
         embedding_model=embedding_model,
         ollama_base_url=ollama_base_url,
+        embedding_provider=embedding_provider,
+        embedding_base_url=embedding_base_url,
+        embedding_api_key_env=embedding_api_key_env,
         mode=mode,
         top_k=top_k,
         backend=backend,
@@ -115,9 +124,11 @@ def chat_saki(
         rag_docs_dir=rag_docs_dir,
         profile_text=profile_text,
     )
-    answer = call_ollama_chat(
+    answer = call_chat_provider(
         model=chat_model,
-        ollama_base_url=ollama_base_url,
+        base_url=chat_base_url or ollama_base_url,
+        provider=chat_provider,
+        api_key_env=chat_api_key_env,
         prompt=prepared.prompt,
         temperature=0.65,
         num_ctx=8192,
@@ -138,6 +149,9 @@ def prepare_saki_chat(
     collection_name: str,
     embedding_model: str,
     ollama_base_url: str,
+    embedding_provider: str = "ollama",
+    embedding_base_url: str | None = None,
+    embedding_api_key_env: str = "",
     mode: str = "auto",
     top_k: int = 4,
     backend: str = "auto",
@@ -161,6 +175,9 @@ def prepare_saki_chat(
             collection_name=collection_name,
             embedding_model=embedding_model,
             ollama_base_url=ollama_base_url,
+            embedding_provider=embedding_provider,
+            embedding_base_url=embedding_base_url,
+            embedding_api_key_env=embedding_api_key_env,
             top_k=top_k,
             backend=backend,
         )

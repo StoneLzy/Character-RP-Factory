@@ -87,6 +87,18 @@ rag:
   chunk_overlap: 80
   top_k: 5
 
+llm:
+  provider: ollama
+  model: qwen3.5:9b
+  base_url: http://localhost:11434
+  api_key_env: ""
+
+embedding:
+  provider: ollama
+  model: bge-m3
+  base_url: http://localhost:11434
+  api_key_env: ""
+
 tts:
   enabled: true
   provider: gpt_sovits
@@ -97,8 +109,10 @@ tts:
   prompt_lang: ja
   text_lang: ja
   translate_to_japanese: true
+  translation_provider: ollama
   translation_model: qwen3.5:9b
   translation_base_url: http://localhost:11434
+  translation_api_key_env: ""
   translation_timeout_seconds: 180
   text_split_method: cut5
   media_type: wav

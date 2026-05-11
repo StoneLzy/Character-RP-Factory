@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 @dataclass(frozen=True)
@@ -165,11 +166,16 @@ class ChatHistoryStore:
             ).fetchall()
         return [message_from_row(row) for row in rows]
 
-    def connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("pragma foreign_keys = on")
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def utc_now() -> str:

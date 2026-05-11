@@ -10,7 +10,13 @@ class WebUITests(unittest.TestCase):
         settings = WebUISettings(
             config=cfg,
             embedding_model="bge-m3",
+            embedding_provider="ollama",
+            embedding_base_url="http://localhost:11434",
+            embedding_api_key_env="",
             chat_model="qwen3.5:9b",
+            chat_provider="ollama",
+            chat_base_url="http://localhost:11434",
+            chat_api_key_env="",
             collection_name="hski_character_rag",
             backend="auto",
         )

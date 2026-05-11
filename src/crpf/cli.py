@@ -26,6 +26,22 @@ app = typer.Typer(help="Character-RP-Factory CSV cleaning and RP asset CLI.")
 console = Console()
 
 
+def embedding_model_name(cfg, override: str | None = None) -> str:
+    return override or cfg.embedding.model or cfg.rag.embedding_model
+
+
+def llm_model_name(cfg, override: str | None = None) -> str:
+    return override or cfg.llm.model or cfg.rag.chat_model
+
+
+def embedding_base_url(cfg) -> str:
+    return cfg.embedding.base_url or cfg.rag.ollama_base_url
+
+
+def llm_base_url(cfg) -> str:
+    return cfg.llm.base_url or cfg.rag.ollama_base_url
+
+
 @app.command()
 def init(config: Path = typer.Option(Path("config.example.yaml"), "--config", "-c")) -> None:
     """Create the standard workspace directories."""
@@ -177,13 +193,14 @@ def summarize_raw_rag(config: Path = typer.Option(Path("config.example.yaml"), "
 @app.command("summarize-scenes-llm")
 def summarize_scenes_llm(
     config: Path = typer.Option(Path("config.example.yaml"), "--config", "-c"),
-    model: str = typer.Option("qwen3.5:9b", "--model", "-m"),
-    base_url: str = typer.Option("http://localhost:11434", "--ollama-base-url"),
+    model: str | None = typer.Option(None, "--model", "-m"),
+    provider: str | None = typer.Option(None, "--provider", help="ollama or openai_compatible."),
+    base_url: str | None = typer.Option(None, "--base-url", "--ollama-base-url"),
     limit: int | None = typer.Option(None, "--limit", help="Only summarize first N scenes for testing."),
     no_resume: bool = typer.Option(False, "--no-resume", help="Ignore existing LLM summaries."),
     summary_mode: str = typer.Option("fast", "--summary-mode", help="fast or full."),
 ) -> None:
-    """Use a local Ollama LLM to write true scene summaries."""
+    """Use an LLM provider to write true scene summaries."""
     if summary_mode not in {"fast", "full"}:
         raise typer.BadParameter("summary-mode must be 'fast' or 'full'")
     cfg = load_config(config)
@@ -191,8 +208,11 @@ def summarize_scenes_llm(
         cfg.raw_csv_dir,
         cfg.summary_output_dir,
         cfg.rag_docs_dir,
-        model=model,
-        ollama_base_url=base_url,
+        model=llm_model_name(cfg, model),
+        ollama_base_url=cfg.rag.ollama_base_url,
+        provider=provider or cfg.llm.provider,
+        base_url=base_url or llm_base_url(cfg),
+        api_key_env=cfg.llm.api_key_env,
         limit=limit,
         resume=not no_resume,
         summary_mode=summary_mode,
@@ -248,8 +268,11 @@ def build_rag_index_command(
             rag_docs_dir=cfg.rag_docs_dir,
             chroma_dir=cfg.chroma_dir,
             collection_name=collection_name or cfg.rag.collection_name,
-            embedding_model=embedding_model or cfg.rag.embedding_model,
+            embedding_model=embedding_model_name(cfg, embedding_model),
             ollama_base_url=cfg.rag.ollama_base_url,
+            embedding_provider=cfg.embedding.provider,
+            embedding_base_url=embedding_base_url(cfg),
+            embedding_api_key_env=cfg.embedding.api_key_env,
             chunk_size=cfg.rag.chunk_size,
             chunk_overlap=cfg.rag.chunk_overlap,
             reset=reset,
@@ -282,8 +305,11 @@ def rag_query_command(
             query=query,
             chroma_dir=cfg.chroma_dir,
             collection_name=collection_name or cfg.rag.collection_name,
-            embedding_model=embedding_model or cfg.rag.embedding_model,
+            embedding_model=embedding_model_name(cfg, embedding_model),
             ollama_base_url=cfg.rag.ollama_base_url,
+            embedding_provider=cfg.embedding.provider,
+            embedding_base_url=embedding_base_url(cfg),
+            embedding_api_key_env=cfg.embedding.api_key_env,
             top_k=top_k or cfg.rag.top_k,
             backend=backend,
         )
@@ -323,9 +349,15 @@ def rag_ask_command(
             question=question,
             chroma_dir=cfg.chroma_dir,
             collection_name=collection_name or cfg.rag.collection_name,
-            embedding_model=embedding_model or cfg.rag.embedding_model,
-            chat_model=chat_model or cfg.rag.chat_model,
+            embedding_model=embedding_model_name(cfg, embedding_model),
+            chat_model=llm_model_name(cfg, chat_model),
             ollama_base_url=cfg.rag.ollama_base_url,
+            embedding_provider=cfg.embedding.provider,
+            embedding_base_url=embedding_base_url(cfg),
+            embedding_api_key_env=cfg.embedding.api_key_env,
+            chat_provider=cfg.llm.provider,
+            chat_base_url=llm_base_url(cfg),
+            chat_api_key_env=cfg.llm.api_key_env,
             top_k=top_k or cfg.rag.top_k,
             backend=backend,
         )
@@ -363,8 +395,14 @@ def webui_command(
     cfg = load_config(config)
     settings = WebUISettings(
         config=cfg,
-        embedding_model=embedding_model or cfg.rag.embedding_model,
-        chat_model=chat_model or cfg.rag.chat_model,
+        embedding_model=embedding_model_name(cfg, embedding_model),
+        embedding_provider=cfg.embedding.provider,
+        embedding_base_url=embedding_base_url(cfg),
+        embedding_api_key_env=cfg.embedding.api_key_env,
+        chat_model=llm_model_name(cfg, chat_model),
+        chat_provider=cfg.llm.provider,
+        chat_base_url=llm_base_url(cfg),
+        chat_api_key_env=cfg.llm.api_key_env,
         collection_name=collection_name or cfg.rag.collection_name,
         backend=backend,
     )
@@ -391,9 +429,15 @@ def chat_saki_command(
     common = {
         "chroma_dir": cfg.chroma_dir,
         "collection_name": collection_name or cfg.rag.collection_name,
-        "embedding_model": embedding_model or cfg.rag.embedding_model,
-        "chat_model": chat_model or cfg.rag.chat_model,
+        "embedding_model": embedding_model_name(cfg, embedding_model),
+        "chat_model": llm_model_name(cfg, chat_model),
         "ollama_base_url": cfg.rag.ollama_base_url,
+        "embedding_provider": cfg.embedding.provider,
+        "embedding_base_url": embedding_base_url(cfg),
+        "embedding_api_key_env": cfg.embedding.api_key_env,
+        "chat_provider": cfg.llm.provider,
+        "chat_base_url": llm_base_url(cfg),
+        "chat_api_key_env": cfg.llm.api_key_env,
         "mode": mode,
         "top_k": top_k,
         "backend": backend,

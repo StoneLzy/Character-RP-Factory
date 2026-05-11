@@ -100,6 +100,16 @@ class TTSTests(unittest.TestCase):
             path = Path(tmp) / "config.yaml"
             path.write_text(
                 """
+llm:
+  provider: openai_compatible
+  model: api-chat
+  base_url: https://api.example.test/v1
+  api_key_env: TEST_CHAT_KEY
+embedding:
+  provider: openai_compatible
+  model: api-embed
+  base_url: https://api.example.test/v1
+  api_key_env: TEST_EMBED_KEY
 tts:
   enabled: true
   provider: gpt_sovits
@@ -109,7 +119,9 @@ tts:
   prompt_lang: ja
   text_lang: ja
   translate_to_japanese: true
+  translation_provider: ollama
   translation_model: qwen3.5:9b
+  translation_api_key_env: TEST_LLM_KEY
   speed_factor: 1.0
 """.strip(),
                 encoding="utf-8",
@@ -117,11 +129,19 @@ tts:
 
             config = load_config(path)
 
+            self.assertEqual(config.llm.provider, "openai_compatible")
+            self.assertEqual(config.llm.model, "api-chat")
+            self.assertEqual(config.llm.api_key_env, "TEST_CHAT_KEY")
+            self.assertEqual(config.embedding.provider, "openai_compatible")
+            self.assertEqual(config.embedding.model, "api-embed")
+            self.assertEqual(config.embedding.api_key_env, "TEST_EMBED_KEY")
             self.assertTrue(config.tts.enabled)
             self.assertEqual(config.tts.provider, "gpt_sovits")
             self.assertEqual(config.tts.text_lang, "ja")
             self.assertTrue(config.tts.translate_to_japanese)
+            self.assertEqual(config.tts.translation_provider, "ollama")
             self.assertEqual(config.tts.translation_model, "qwen3.5:9b")
+            self.assertEqual(config.tts.translation_api_key_env, "TEST_LLM_KEY")
             self.assertEqual(config.tts.output_dir, Path("GPT-SoVITS/outputs"))
 
 

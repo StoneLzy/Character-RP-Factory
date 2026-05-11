@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import ProjectConfig, TTSConfig
+from .providers import ModelProviderConfig, complete_chat
 
 
 @dataclass(frozen=True)
@@ -97,12 +98,16 @@ def translate_voice_text_to_japanese(config: ProjectConfig, text: str, output_di
         except (OSError, json.JSONDecodeError):
             pass
 
-    model = config.tts.translation_model or config.rag.chat_model
-    base_url = config.tts.translation_base_url or config.rag.ollama_base_url
-    voice_text = request_ollama_voice_translation(
+    provider = config.tts.translation_provider or config.llm.provider
+    model = config.tts.translation_model or config.llm.model or config.rag.chat_model
+    base_url = config.tts.translation_base_url or config.llm.base_url or config.rag.ollama_base_url
+    api_key_env = config.tts.translation_api_key_env or config.llm.api_key_env
+    voice_text = request_voice_translation(
         text=text,
+        provider=provider,
         model=model,
-        ollama_base_url=base_url,
+        base_url=base_url,
+        api_key_env=api_key_env,
         timeout=config.tts.translation_timeout_seconds,
         max_chars=config.tts.max_text_chars,
     )
@@ -112,6 +117,7 @@ def translate_voice_text_to_japanese(config: ProjectConfig, text: str, output_di
             {
                 "source_text": text,
                 "voice_text": voice_text,
+                "translation_provider": provider,
                 "translation_model": model,
                 "translation_base_url": base_url,
             },
@@ -124,21 +130,23 @@ def translate_voice_text_to_japanese(config: ProjectConfig, text: str, output_di
 
 
 def translation_cache_path(text: str, config: ProjectConfig) -> Path:
-    model = config.tts.translation_model or config.rag.chat_model
-    base_url = config.tts.translation_base_url or config.rag.ollama_base_url
-    key = "\n".join([text, model, base_url, "saki-ja-voice-v1"])
+    provider = config.tts.translation_provider or config.llm.provider
+    model = config.tts.translation_model or config.llm.model or config.rag.chat_model
+    base_url = config.tts.translation_base_url or config.llm.base_url or config.rag.ollama_base_url
+    key = "\n".join([text, provider, model, base_url, "saki-ja-voice-v1"])
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:24]
     return config.tts.output_dir / f"saki_voice_text_{digest}.json"
 
 
-def request_ollama_voice_translation(
+def request_voice_translation(
     text: str,
+    provider: str,
     model: str,
-    ollama_base_url: str,
+    base_url: str,
+    api_key_env: str,
     timeout: int,
     max_chars: int,
 ) -> str:
-    url = ollama_base_url.rstrip("/") + "/api/chat"
     prompt = f"""把下面这段中文回复改写成适合语音合成的日语台词。
 
 要求：
@@ -153,43 +161,41 @@ def request_ollama_voice_translation(
 中文回复：
 {text}
 """
-    payload = {
-        "model": model,
-        "stream": False,
-        "think": False,
-        "options": {
-            "temperature": 0.15,
-            "top_p": 0.9,
-            "num_ctx": 4096,
-            "num_predict": max(120, min(700, max_chars * 2)),
-        },
-        "messages": [
-            {
-                "role": "system",
-                "content": "あなたは日中翻訳者です。花海咲季らしい自然な日本語台詞だけを出力します。",
-            },
-            {"role": "user", "content": prompt},
-        ],
-    }
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with opener.open(request, timeout=timeout) as response:
-            raw = json.loads(response.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
-        raise ValueError(f"Ollama voice translation failed: {exc}") from exc
+        content = complete_chat(
+            ModelProviderConfig(provider=provider, model=model, base_url=base_url, api_key_env=api_key_env),
+            prompt=prompt,
+            system="あなたは日中翻訳者です。キャラクターらしい自然な日本語台詞だけを出力します。",
+            temperature=0.15,
+            num_ctx=4096,
+            num_predict=max(120, min(700, max_chars * 2)),
+            timeout=timeout,
+        )
+    except RuntimeError as exc:
+        raise ValueError(f"Voice translation failed: {exc}") from exc
 
-    content = str(raw.get("message", {}).get("content", "")).strip()
-    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
     content = clean_translated_voice_text(content, max_chars=max_chars)
     if not content:
-        raise ValueError(f"Ollama voice translation is empty: {raw}")
+        raise ValueError("Voice translation is empty")
     return content
+
+
+def request_ollama_voice_translation(
+    text: str,
+    model: str,
+    ollama_base_url: str,
+    timeout: int,
+    max_chars: int,
+) -> str:
+    return request_voice_translation(
+        text=text,
+        provider="ollama",
+        model=model,
+        base_url=ollama_base_url,
+        api_key_env="",
+        timeout=timeout,
+        max_chars=max_chars,
+    )
 
 
 def clean_translated_voice_text(text: str, max_chars: int) -> str:
@@ -215,7 +221,8 @@ def write_tts_metadata(
                 "text_lang": config.tts.text_lang,
                 "prompt_lang": config.tts.prompt_lang,
                 "provider": config.tts.provider,
-                "translation_model": config.tts.translation_model or config.rag.chat_model if translated else "",
+                "translation_provider": config.tts.translation_provider or config.llm.provider if translated else "",
+                "translation_model": config.tts.translation_model or config.llm.model or config.rag.chat_model if translated else "",
             },
             ensure_ascii=False,
             indent=2,

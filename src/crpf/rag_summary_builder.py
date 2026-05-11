@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import urllib.error
-import urllib.request
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable
@@ -12,6 +10,7 @@ from .cleaning import normalize_text
 from .context_builder import SPEAKER_TRANSLATIONS
 from .exporters import sanitize_chinese_text
 from .io_csv import find_csv_files, read_csv_any_encoding
+from .providers import ModelProviderConfig, complete_chat
 
 
 TARGET_NAMES = ("咲季", "花海咲季", "hski", "花海咲季", "小咲季")
@@ -58,6 +57,9 @@ def build_llm_rag_summaries(
     rag_docs_dir: Path,
     model: str,
     ollama_base_url: str,
+    provider: str = "ollama",
+    base_url: str | None = None,
+    api_key_env: str = "",
     limit: int | None = None,
     resume: bool = True,
     summary_mode: str = "fast",
@@ -80,6 +82,9 @@ def build_llm_rag_summaries(
             scene,
             model=model,
             ollama_base_url=ollama_base_url,
+            provider=provider,
+            base_url=base_url,
+            api_key_env=api_key_env,
             summary_mode=summary_mode,
         )
         summaries.append(summary)
@@ -290,15 +295,20 @@ def summarize_scene_with_llm(
     scene: dict[str, object],
     model: str,
     ollama_base_url: str,
-    summary_mode: str,
+    provider: str = "ollama",
+    base_url: str | None = None,
+    api_key_env: str = "",
+    summary_mode: str = "fast",
 ) -> dict[str, object]:
     heuristic = summarize_scene(scene)
     dialogue = format_scene_dialogue_for_prompt(scene, max_line_chars=120 if summary_mode == "fast" else 180)
     prompt = build_scene_summary_prompt(scene, dialogue, summary_mode=summary_mode)
     try:
-        data = call_ollama_json(
+        data = call_summary_json(
             model=model,
-            ollama_base_url=ollama_base_url,
+            base_url=base_url or ollama_base_url,
+            provider=provider,
+            api_key_env=api_key_env,
             prompt=prompt,
             summary_mode=summary_mode,
         )
@@ -307,9 +317,11 @@ def summarize_scene_with_llm(
         if summary_mode == "fast":
             try:
                 strict_prompt = prompt + "\n\n重要：必须输出合法 JSON；数组元素之间必须用英文逗号分隔；不要输出 Markdown。"
-                data = call_ollama_json(
+                data = call_summary_json(
                     model=model,
-                    ollama_base_url=ollama_base_url,
+                    base_url=base_url or ollama_base_url,
+                    provider=provider,
+                    api_key_env=api_key_env,
                     prompt=strict_prompt,
                     summary_mode="fast_strict",
                 )
@@ -405,41 +417,36 @@ def format_scene_dialogue_for_prompt(scene: dict[str, object], max_line_chars: i
     return "\n".join(rendered)
 
 
-def call_ollama_json(model: str, ollama_base_url: str, prompt: str, summary_mode: str = "fast") -> dict[str, object]:
-    url = ollama_base_url.rstrip("/") + "/api/chat"
-    payload = {
-        "model": model,
-        "stream": False,
-        "format": "json",
-        "think": False,
-        "options": {
-            "temperature": 0.1,
-            "top_p": 0.9,
-            "num_ctx": 4096 if summary_mode in {"fast", "fast_strict"} else 8192,
-            "num_predict": 768 if summary_mode == "fast_strict" else (512 if summary_mode == "fast" else 1024),
-        },
-        "messages": [
-            {
-                "role": "system",
-                "content": "你是严谨的剧情资料整理员，只输出合法 JSON，不输出思考过程。",
-            },
-            {"role": "user", "content": prompt},
-        ],
-    }
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+def call_summary_json(
+    model: str,
+    base_url: str,
+    provider: str,
+    api_key_env: str,
+    prompt: str,
+    summary_mode: str = "fast",
+) -> dict[str, object]:
+    content = complete_chat(
+        ModelProviderConfig(provider=provider, model=model, base_url=base_url, api_key_env=api_key_env),
+        prompt=prompt,
+        system="你是严谨的剧情资料整理员，只输出合法 JSON，不输出思考过程。",
+        temperature=0.1,
+        num_ctx=4096 if summary_mode in {"fast", "fast_strict"} else 8192,
+        num_predict=768 if summary_mode == "fast_strict" else (512 if summary_mode == "fast" else 1024),
+        timeout=240,
+        json_mode=True,
     )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        with opener.open(request, timeout=240) as response:
-            raw = json.loads(response.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Ollama request failed: {exc}") from exc
-    content = raw.get("message", {}).get("content", "")
-    return parse_llm_json(str(content))
+    return parse_llm_json(content)
+
+
+def call_ollama_json(model: str, ollama_base_url: str, prompt: str, summary_mode: str = "fast") -> dict[str, object]:
+    return call_summary_json(
+        model=model,
+        base_url=ollama_base_url,
+        provider="ollama",
+        api_key_env="",
+        prompt=prompt,
+        summary_mode=summary_mode,
+    )
 
 
 def parse_llm_json(content: str) -> dict[str, object]:

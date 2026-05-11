@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from .chat_store import ChatHistoryStore, Conversation, StoredMessage
 from .config import ProjectConfig
-from .rag_chat import ask_rag, stream_ollama_chat
+from .rag_chat import ask_rag, stream_chat_provider
 from .rag_index import RagSearchResult, query_rag_index
 from .saki_chat import CHAT_MODES, SAKI_CHAT_NUM_PREDICT, ChatTurn, chat_saki, clean_saki_reply, prepare_saki_chat
 from .source_trace import build_source_trace, normalize_scene_id
@@ -27,7 +27,13 @@ SAKI_AVATAR_PATH = ASSETS_DIR / "saki-avatar.jpg"
 class WebUISettings:
     config: ProjectConfig
     embedding_model: str
+    embedding_provider: str
+    embedding_base_url: str
+    embedding_api_key_env: str
     chat_model: str
+    chat_provider: str
+    chat_base_url: str
+    chat_api_key_env: str
     collection_name: str
     backend: str
 
@@ -79,7 +85,9 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
                         "ok": True,
                         "collection_name": settings.collection_name,
                         "embedding_model": settings.embedding_model,
+                        "embedding_provider": settings.embedding_provider,
                         "chat_model": settings.chat_model,
+                        "chat_provider": settings.chat_provider,
                         "backend": settings.backend,
                     }
                 )
@@ -182,6 +190,9 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
                 collection_name=settings.collection_name,
                 embedding_model=settings.embedding_model,
                 ollama_base_url=settings.config.rag.ollama_base_url,
+                embedding_provider=settings.embedding_provider,
+                embedding_base_url=settings.embedding_base_url,
+                embedding_api_key_env=settings.embedding_api_key_env,
                 top_k=top_k,
                 backend=backend,
             )
@@ -199,6 +210,12 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
                 embedding_model=settings.embedding_model,
                 chat_model=settings.chat_model,
                 ollama_base_url=settings.config.rag.ollama_base_url,
+                embedding_provider=settings.embedding_provider,
+                embedding_base_url=settings.embedding_base_url,
+                embedding_api_key_env=settings.embedding_api_key_env,
+                chat_provider=settings.chat_provider,
+                chat_base_url=settings.chat_base_url,
+                chat_api_key_env=settings.chat_api_key_env,
                 top_k=top_k,
                 backend=backend,
             )
@@ -260,6 +277,12 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
                 embedding_model=settings.embedding_model,
                 chat_model=settings.chat_model,
                 ollama_base_url=settings.config.rag.ollama_base_url,
+                embedding_provider=settings.embedding_provider,
+                embedding_base_url=settings.embedding_base_url,
+                embedding_api_key_env=settings.embedding_api_key_env,
+                chat_provider=settings.chat_provider,
+                chat_base_url=settings.chat_base_url,
+                chat_api_key_env=settings.chat_api_key_env,
                 mode=mode,
                 top_k=top_k,
                 backend=backend,
@@ -328,6 +351,9 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
                 collection_name=settings.collection_name,
                 embedding_model=settings.embedding_model,
                 ollama_base_url=settings.config.rag.ollama_base_url,
+                embedding_provider=settings.embedding_provider,
+                embedding_base_url=settings.embedding_base_url,
+                embedding_api_key_env=settings.embedding_api_key_env,
                 mode=mode,
                 top_k=top_k,
                 backend=backend,
@@ -365,9 +391,11 @@ def make_handler(settings: WebUISettings) -> type[BaseHTTPRequestHandler]:
             )
             parts: list[str] = []
             try:
-                for delta in stream_ollama_chat(
+                for delta in stream_chat_provider(
                     model=settings.chat_model,
-                    ollama_base_url=settings.config.rag.ollama_base_url,
+                    base_url=settings.chat_base_url,
+                    provider=settings.chat_provider,
+                    api_key_env=settings.chat_api_key_env,
                     prompt=prepared.prompt,
                     temperature=0.65,
                     num_ctx=8192,

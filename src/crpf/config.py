@@ -36,6 +36,14 @@ class RagConfig:
 
 
 @dataclass(frozen=True)
+class ModelConfig:
+    provider: str = "ollama"
+    model: str = ""
+    base_url: str = ""
+    api_key_env: str = ""
+
+
+@dataclass(frozen=True)
 class TTSConfig:
     enabled: bool = True
     provider: str = "gpt_sovits"
@@ -46,8 +54,10 @@ class TTSConfig:
     prompt_lang: str = "ja"
     text_lang: str = "ja"
     translate_to_japanese: bool = True
+    translation_provider: str = ""
     translation_model: str = ""
     translation_base_url: str = ""
+    translation_api_key_env: str = ""
     translation_timeout_seconds: int = 180
     text_split_method: str = "cut5"
     media_type: str = "wav"
@@ -69,6 +79,16 @@ class ProjectConfig:
     user_names: tuple[str, ...] = ("{user}", "プロデューサー", "制作人")
     column_aliases: dict[str, list[str]] = field(default_factory=lambda: dict(DEFAULT_COLUMN_ALIASES))
     rag: RagConfig = field(default_factory=RagConfig)
+    llm: ModelConfig = field(default_factory=lambda: ModelConfig(
+        provider="ollama",
+        model="qwen3.5:9b",
+        base_url="http://localhost:11434",
+    ))
+    embedding: ModelConfig = field(default_factory=lambda: ModelConfig(
+        provider="ollama",
+        model="bge-m3",
+        base_url="http://localhost:11434",
+    ))
     tts: TTSConfig = field(default_factory=TTSConfig)
     previous_lines: int = 3
     min_response_chars: int = 2
@@ -158,10 +178,15 @@ def load_config(path: str | Path | None = None) -> ProjectConfig:
     cleaning = data.get("cleaning", {})
     quality = data.get("quality", {})
     rag = data.get("rag", {})
+    llm = data.get("llm", {})
+    embedding = data.get("embedding", {})
     tts = data.get("tts", {})
     training = data.get("training", {})
 
     aliases = DEFAULT_COLUMN_ALIASES | (columns.get("aliases") or {})
+    rag_chat_model = str(rag.get("chat_model", "qwen3.5:9b"))
+    rag_embedding_model = str(rag.get("embedding_model", "bge-m3"))
+    rag_ollama_base_url = str(rag.get("ollama_base_url", "http://localhost:11434"))
 
     return ProjectConfig(
         raw_csv_dir=_as_path(paths.get("raw_csv_dir"), "CSV"),
@@ -175,12 +200,24 @@ def load_config(path: str | Path | None = None) -> ProjectConfig:
         column_aliases=aliases,
         rag=RagConfig(
             collection_name=str(rag.get("collection_name", "hski_character_rag")),
-            embedding_model=str(rag.get("embedding_model", "bge-m3")),
-            chat_model=str(rag.get("chat_model", "qwen3.5:9b")),
-            ollama_base_url=str(rag.get("ollama_base_url", "http://localhost:11434")),
+            embedding_model=rag_embedding_model,
+            chat_model=rag_chat_model,
+            ollama_base_url=rag_ollama_base_url,
             chunk_size=int(rag.get("chunk_size", 500)),
             chunk_overlap=int(rag.get("chunk_overlap", 80)),
             top_k=int(rag.get("top_k", 5)),
+        ),
+        llm=ModelConfig(
+            provider=str(llm.get("provider", "ollama")),
+            model=str(llm.get("model", rag_chat_model)),
+            base_url=str(llm.get("base_url", rag_ollama_base_url)),
+            api_key_env=str(llm.get("api_key_env", "")),
+        ),
+        embedding=ModelConfig(
+            provider=str(embedding.get("provider", "ollama")),
+            model=str(embedding.get("model", rag_embedding_model)),
+            base_url=str(embedding.get("base_url", rag_ollama_base_url)),
+            api_key_env=str(embedding.get("api_key_env", "")),
         ),
         tts=TTSConfig(
             enabled=_as_bool(tts.get("enabled"), True),
@@ -195,8 +232,10 @@ def load_config(path: str | Path | None = None) -> ProjectConfig:
             prompt_lang=str(tts.get("prompt_lang", "ja")),
             text_lang=str(tts.get("text_lang", "ja")),
             translate_to_japanese=_as_bool(tts.get("translate_to_japanese"), True),
+            translation_provider=str(tts.get("translation_provider", "")),
             translation_model=str(tts.get("translation_model", "")),
             translation_base_url=str(tts.get("translation_base_url", "")),
+            translation_api_key_env=str(tts.get("translation_api_key_env", "")),
             translation_timeout_seconds=int(tts.get("translation_timeout_seconds", 180)),
             text_split_method=str(tts.get("text_split_method", "cut5")),
             media_type=str(tts.get("media_type", "wav")),

@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import json
 import re
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
+from .providers import ModelProviderConfig, complete_chat, stream_chat
 from .rag_index import RagSearchResult, query_rag_index
 
 
@@ -35,6 +34,12 @@ def ask_rag(
     embedding_model: str,
     chat_model: str,
     ollama_base_url: str,
+    embedding_provider: str = "ollama",
+    embedding_base_url: str | None = None,
+    embedding_api_key_env: str = "",
+    chat_provider: str = "ollama",
+    chat_base_url: str | None = None,
+    chat_api_key_env: str = "",
     top_k: int = 5,
     backend: str = "auto",
     max_context_chars: int = 6500,
@@ -46,6 +51,9 @@ def ask_rag(
         collection_name=collection_name,
         embedding_model=embedding_model,
         ollama_base_url=ollama_base_url,
+        embedding_provider=embedding_provider,
+        embedding_base_url=embedding_base_url,
+        embedding_api_key_env=embedding_api_key_env,
         top_k=top_k,
         backend=backend,
     )
@@ -54,9 +62,11 @@ def ask_rag(
 
     sources = tuple(build_sources(contexts))
     prompt = build_rag_prompt(question, contexts, sources, max_context_chars=max_context_chars)
-    answer = call_ollama_chat(
+    answer = call_chat_provider(
         model=chat_model,
-        ollama_base_url=ollama_base_url,
+        base_url=chat_base_url or ollama_base_url,
+        provider=chat_provider,
+        api_key_env=chat_api_key_env,
         prompt=prompt,
     )
     return RagAnswer(question=question, answer=answer, sources=sources, contexts=tuple(contexts))
@@ -122,43 +132,39 @@ def call_ollama_chat(
     num_predict: int = 900,
     timeout: int = 300,
 ) -> str:
-    url = ollama_base_url.rstrip("/") + "/api/chat"
-    payload = {
-        "model": model,
-        "stream": False,
-        "think": False,
-        "options": {
-            "temperature": temperature,
-            "top_p": 0.9,
-            "num_ctx": num_ctx,
-            "num_predict": num_predict,
-        },
-        "messages": [
-            {
-                "role": "system",
-                "content": "你是严谨的中文 RAG 问答助手。只根据给定资料回答，不输出思考过程。",
-            },
-            {"role": "user", "content": prompt},
-        ],
-    }
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+    return call_chat_provider(
+        model=model,
+        base_url=ollama_base_url,
+        provider="ollama",
+        api_key_env="",
+        prompt=prompt,
+        temperature=temperature,
+        num_ctx=num_ctx,
+        num_predict=num_predict,
+        timeout=timeout,
     )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        with opener.open(request, timeout=timeout) as response:
-            raw = json.loads(response.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Ollama chat request failed: {exc}") from exc
 
-    content = str(raw.get("message", {}).get("content", "")).strip()
-    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
-    if not content:
-        raise RuntimeError(f"Ollama chat response is empty: {raw}")
-    return content
+
+def call_chat_provider(
+    model: str,
+    base_url: str,
+    provider: str,
+    api_key_env: str,
+    prompt: str,
+    temperature: float = 0.2,
+    num_ctx: int = 8192,
+    num_predict: int = 900,
+    timeout: int = 300,
+) -> str:
+    return complete_chat(
+        ModelProviderConfig(provider=provider, model=model, base_url=base_url, api_key_env=api_key_env),
+        prompt=prompt,
+        system="你是严谨的中文 RAG 问答助手。只根据给定资料回答，不输出思考过程。",
+        temperature=temperature,
+        num_ctx=num_ctx,
+        num_predict=num_predict,
+        timeout=timeout,
+    )
 
 
 def stream_ollama_chat(
@@ -170,47 +176,39 @@ def stream_ollama_chat(
     num_predict: int = 900,
     timeout: int = 300,
 ) -> Iterator[str]:
-    url = ollama_base_url.rstrip("/") + "/api/chat"
-    payload = {
-        "model": model,
-        "stream": True,
-        "think": False,
-        "options": {
-            "temperature": temperature,
-            "top_p": 0.9,
-            "num_ctx": num_ctx,
-            "num_predict": num_predict,
-        },
-        "messages": [
-            {
-                "role": "system",
-                "content": "你是严谨的中文 RAG 问答助手。只根据给定资料回答，不输出思考过程。",
-            },
-            {"role": "user", "content": prompt},
-        ],
-    }
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+    yield from stream_chat_provider(
+        model=model,
+        base_url=ollama_base_url,
+        provider="ollama",
+        api_key_env="",
+        prompt=prompt,
+        temperature=temperature,
+        num_ctx=num_ctx,
+        num_predict=num_predict,
+        timeout=timeout,
     )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        with opener.open(request, timeout=timeout) as response:
-            for line in response:
-                if not line.strip():
-                    continue
-                raw = json.loads(line.decode("utf-8"))
-                if raw.get("error"):
-                    raise RuntimeError(str(raw["error"]))
-                content = str(raw.get("message", {}).get("content", ""))
-                if content:
-                    yield content
-                if raw.get("done"):
-                    break
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Ollama chat stream request failed: {exc}") from exc
+
+
+def stream_chat_provider(
+    model: str,
+    base_url: str,
+    provider: str,
+    api_key_env: str,
+    prompt: str,
+    temperature: float = 0.2,
+    num_ctx: int = 8192,
+    num_predict: int = 900,
+    timeout: int = 300,
+) -> Iterator[str]:
+    yield from stream_chat(
+        ModelProviderConfig(provider=provider, model=model, base_url=base_url, api_key_env=api_key_env),
+        prompt=prompt,
+        system="你是严谨的中文 RAG 问答助手。只根据给定资料回答，不输出思考过程。",
+        temperature=temperature,
+        num_ctx=num_ctx,
+        num_predict=num_predict,
+        timeout=timeout,
+    )
 
 
 def build_sources(contexts: list[RagSearchResult]) -> list[RagSource]:
